@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  font-family: Inter, "Segoe UI Variable", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  color: #0f172a;
+  background: #f6f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --sidebar-width: 252px;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; min-height: 100%; }
+body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+::selection { background: rgba(99, 102, 241, 0.2); }
+
+.dark { color-scheme: dark; }
+.dark body { background: #080d18; }
+
+.app-scrollbar { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.dark .app-scrollbar { scrollbar-color: #334155 transparent; }
+.app-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-scrollbar::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #cbd5e1; background-clip: padding-box; }
+.dark .app-scrollbar::-webkit-scrollbar-thumb { background: #334155; background-clip: padding-box; }
+
+.table-grid { min-width: 900px; }
+.table-row { display: grid; grid-template-columns: minmax(280px, 2.1fr) 105px 105px 105px 110px 100px 88px; align-items: center; }
+.table-row-drafts { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(170px, 1fr) 100px 105px 110px 88px; align-items: center; }
+.table-row-tasks { display: grid; grid-template-columns: minmax(230px, 1.5fr) 110px minmax(180px, 1fr) 100px 120px 80px; align-items: center; }
+
+@keyframes dialog-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (max-width: 1023px) {
+  :root { --sidebar-width: 80px; }
+}
+
+@media (max-width: 479px) {
+  :root { --sidebar-width: 64px; }
+}

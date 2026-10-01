@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ozon Assistant">
+  <defs>
+    <linearGradient id="background" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#005BFF"/>
+      <stop offset="1" stop-color="#7F39FB"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="132" y1="126" x2="349" y2="383" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E7ECFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#background)"/>
+  <circle cx="244" cy="270" r="116" fill="none" stroke="url(#ring)" stroke-width="48"/>
+  <circle cx="244" cy="270" r="42" fill="#FFFFFF" fill-opacity="0.18"/>
+  <path d="M373 83l13 36 36 13-36 13-13 36-13-36-36-13 36-13 13-36z" fill="#FFFFFF"/>
+  <path d="M411 188l7 19 19 7-19 7-7 19-7-19-19-7 19-7 7-19z" fill="#FFFFFF" fill-opacity="0.82"/>
+</svg>
