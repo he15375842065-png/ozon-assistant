@@ -283,6 +283,7 @@ def _settings_read(settings: Settings) -> SettingsRead:
         source_provider=settings.source_provider,
         source_browser_profile=settings.source_browser_profile,
         source_browser_timeout_ms=settings.source_browser_timeout_ms,
+        source_browser_channel=settings.source_browser_channel,
         ai_provider=settings.ai_provider,
         ai_model=settings.ai_model,
         ai_temperature=settings.ai_temperature,

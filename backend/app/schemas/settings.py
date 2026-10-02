@@ -8,6 +8,7 @@ class SettingsRead(BaseModel):
     source_provider: str
     source_browser_profile: str
     source_browser_timeout_ms: int
+    source_browser_channel: str
     ai_provider: str
     ai_model: str
     ai_temperature: float
@@ -28,6 +29,7 @@ class SettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_provider: Literal["browser", "mock"] | None = None
+    source_browser_channel: Literal["chrome", "msedge"] | None = None
     ai_provider: Literal["mock", "openai_compatible"] | None = None
     ai_model: str | None = Field(default=None, min_length=1, max_length=120)
     ai_temperature: float | None = Field(default=None, ge=0, le=2)

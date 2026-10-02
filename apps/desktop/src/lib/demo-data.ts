@@ -157,6 +157,7 @@ export const demoSettings: AppSettings = {
   ozon_api_key_configured: false,
   ozon_mode: "mock",
   source_provider: "mock",
+  source_browser_channel: "chrome",
   database_backend: "sqlite",
   exchange_rate: 12.6,
   domestic_shipping: 5,

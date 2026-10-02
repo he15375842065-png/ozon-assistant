@@ -144,7 +144,9 @@ def build_workflow(
         from app.integrations.sources.browser_1688 import Browser1688Provider
 
         source_provider = Browser1688Provider(
-            settings.source_browser_profile, settings.source_browser_timeout_ms
+            settings.source_browser_profile,
+            settings.source_browser_timeout_ms,
+            settings.source_browser_channel,
         )
     return ProductWorkflowService(
         products=ProductRepository(session),

@@ -59,9 +59,15 @@ _SNAPSHOT_SCRIPT = """() => {
 class Alibaba1688BrowserManager:
     """All Playwright objects remain on one dedicated worker thread."""
 
-    def __init__(self, profile_dir: str, timeout_ms: int = 30000) -> None:
+    def __init__(
+        self,
+        profile_dir: str,
+        timeout_ms: int = 30000,
+        channel: str = "chrome",
+    ) -> None:
         self.profile_dir = str(Path(profile_dir).resolve())
         self.timeout_ms = timeout_ms
+        self.channel = (channel or "chrome").strip().lower()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="1688-browser")
         self._playwright: Any = None
         self._context: Any = None
@@ -115,14 +121,33 @@ class Alibaba1688BrowserManager:
             timeout=self.timeout_ms,
         )
         try:
-            try:
-                self._context = self._playwright.chromium.launch_persistent_context(
-                    channel="msedge", **options
-                )
-            except Error as exc:
-                if "not found" not in str(exc).lower() and "doesn't exist" not in str(exc).lower():
+            # Prefer the configured browser channel (default: Google Chrome),
+            # then fall back to Edge, then to Playwright's bundled Chromium.
+            channels: list[str | None] = [self.channel]
+            for fallback in ("msedge", None):
+                if fallback not in channels:
+                    channels.append(fallback)
+            last_error: Error | None = None
+            for candidate in channels:
+                try:
+                    if candidate:
+                        self._context = self._playwright.chromium.launch_persistent_context(
+                            channel=candidate, **options
+                        )
+                    else:
+                        self._context = self._playwright.chromium.launch_persistent_context(
+                            **options
+                        )
+                    last_error = None
+                    break
+                except Error as exc:
+                    message = str(exc).lower()
+                    if "not found" in message or "doesn't exist" in message:
+                        last_error = exc
+                        continue
                     raise
-                self._context = self._playwright.chromium.launch_persistent_context(**options)
+            if last_error is not None and self._context is None:
+                raise last_error
             self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
             self._page.set_default_timeout(self.timeout_ms)
             self._context.on("close", lambda _: setattr(self, "_opened", False))
@@ -132,7 +157,7 @@ class Alibaba1688BrowserManager:
         except Error as exc:
             self._close_context()
             raise IntegrationError(
-                "无法打开采集浏览器。请安装 Microsoft Edge，或运行 backend\\.venv\\Scripts\\python.exe -m playwright install chromium；若浏览器已开，请关闭占用同一采集会话的窗口后重试。"
+                "无法打开采集浏览器。请安装 Google Chrome（设置页可切换为 Microsoft Edge），或运行 backend\\.venv\\Scripts\\python.exe -m playwright install chromium；若浏览器已开，请关闭占用同一采集会话的窗口后重试。"
             ) from exc
 
     def _open_browser(self, target: str) -> dict[str, str]:
@@ -221,16 +246,27 @@ class Alibaba1688BrowserManager:
             self._executor.shutdown(wait=True)
 
 
-_MANAGERS: dict[str, Alibaba1688BrowserManager] = {}
+_MANAGERS: dict[tuple[str, str], Alibaba1688BrowserManager] = {}
 _MANAGER_LOCK = Lock()
 
 
+def _manager_key(profile_dir: str, channel: str) -> tuple[str, str]:
+    return (str(Path(profile_dir).resolve()), (channel or "chrome").strip().lower())
+
+
 def get_browser_manager(settings: Any) -> Alibaba1688BrowserManager:
-    profile = str(Path(settings.source_browser_profile).resolve())
+    key = _manager_key(
+        settings.source_browser_profile,
+        getattr(settings, "source_browser_channel", "chrome"),
+    )
     with _MANAGER_LOCK:
-        if profile not in _MANAGERS:
-            _MANAGERS[profile] = Alibaba1688BrowserManager(profile, settings.source_browser_timeout_ms)
-        return _MANAGERS[profile]
+        if key not in _MANAGERS:
+            _MANAGERS[key] = Alibaba1688BrowserManager(
+                key[0],
+                settings.source_browser_timeout_ms,
+                key[1],
+            )
+        return _MANAGERS[key]
 
 
 def close_browser_managers() -> None:
@@ -246,14 +282,19 @@ def close_browser_managers() -> None:
 
 
 class Browser1688Provider(Alibaba1688DataProvider):
-    def __init__(self, profile_dir: str, timeout_ms: int = 30000) -> None:
+    def __init__(
+        self, profile_dir: str, timeout_ms: int = 30000, channel: str = "chrome"
+    ) -> None:
         self.profile_dir = profile_dir
         self.timeout_ms = timeout_ms
+        self.channel = (channel or "chrome").strip().lower()
 
     def fetch(self, url: str) -> dict[str, Any]:
-        profile = str(Path(self.profile_dir).resolve())
+        key = _manager_key(self.profile_dir, self.channel)
         with _MANAGER_LOCK:
-            if profile not in _MANAGERS:
-                _MANAGERS[profile] = Alibaba1688BrowserManager(profile, self.timeout_ms)
-            manager = _MANAGERS[profile]
+            if key not in _MANAGERS:
+                _MANAGERS[key] = Alibaba1688BrowserManager(
+                    key[0], self.timeout_ms, key[1]
+                )
+            manager = _MANAGERS[key]
         return manager.fetch(url)

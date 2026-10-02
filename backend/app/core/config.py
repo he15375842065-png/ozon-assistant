@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     source_provider: Literal["browser", "mock"] = "browser"
     source_browser_profile: str = "./data/1688-browser-profile"
     source_browser_timeout_ms: int = Field(default=45000, ge=5000, le=180000)
+    source_browser_channel: str = "chrome"
     ai_provider: Literal["mock", "openai_compatible"] = "mock"
     ai_model: str = "mock-product-processor-v1"
     ai_temperature: float = 0.2

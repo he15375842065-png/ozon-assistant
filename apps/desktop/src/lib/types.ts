@@ -167,6 +167,7 @@ export interface LogEntry {
 
 export interface AppSettings {
   source_provider: string;
+  source_browser_channel: string;
   ai_provider: string;
   ai_model: string;
   ai_temperature: number;
@@ -185,6 +186,7 @@ export interface AppSettings {
 
 export interface AppSettingsUpdate {
   source_provider?: string;
+  source_browser_channel?: string;
   ai_provider?: string;
   ai_model?: string;
   ai_temperature?: number;

@@ -70,3 +70,45 @@ def test_status_recovers_after_window_closed(tmp_path, monkeypatch) -> None:
         assert manager._page is None
     finally:
         manager.close()
+
+
+def test_browser_channel_defaults_to_chrome(tmp_path) -> None:
+    manager = Alibaba1688BrowserManager(str(tmp_path))
+    try:
+        assert manager.channel == "chrome"
+    finally:
+        manager.close()
+
+
+def test_browser_channel_is_configurable(tmp_path) -> None:
+    manager = Alibaba1688BrowserManager(str(tmp_path), channel="msedge")
+    try:
+        assert manager.channel == "msedge"
+    finally:
+        manager.close()
+
+
+def test_manager_key_includes_channel(tmp_path) -> None:
+    from app.integrations.sources.browser_1688 import _manager_key
+
+    chrome_key = _manager_key(str(tmp_path), "chrome")
+    edge_key = _manager_key(str(tmp_path), "msedge")
+    assert chrome_key != edge_key
+    assert chrome_key[1] == "chrome"
+    assert edge_key[1] == "msedge"
+
+
+def test_settings_accept_browser_channel(client) -> None:
+    response = client.patch(
+        "/api/v1/settings", json={"source_browser_channel": "msedge"}
+    )
+    assert response.status_code == 200
+    assert response.json()["source_browser_channel"] == "msedge"
+    client.patch("/api/v1/settings", json={"source_browser_channel": "chrome"})
+
+
+def test_settings_reject_unknown_browser_channel(client) -> None:
+    response = client.patch(
+        "/api/v1/settings", json={"source_browser_channel": "firefox"}
+    )
+    assert response.status_code == 422
