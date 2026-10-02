@@ -55,7 +55,7 @@ flowchart LR
 - `AIGateway` 统一模型调用，Provider 输出经过 Pydantic / JSON Schema 验证。
 - `OzonConnector` 集中认证、HTTP、重试、限流、错误映射和脱敏日志。
 
-V1 使用 Mock 实现跑通业务链路。当前采集页默认选择 `Browser1688Provider`：专用 Playwright 工作线程管理独立本地浏览器会话，读取实际页面快照及页面自然发起的商品 JSON 响应；纯解析器 `alibaba1688_parser.py` 不执行网络或 JavaScript。登录与验证交给用户，失败不返回样例。AI 与 Ozon 真实实现尚未接入，真实来源会阻止进入 Mock AI。
+V1 使用 Mock 实现跑通业务链路。当前采集页默认选择 `Browser1688Provider`：专用 Playwright 工作线程管理独立本地浏览器会话，读取实际页面快照及页面自然发起的商品 JSON 响应；纯解析器 `alibaba1688_parser.py` 不执行网络或 JavaScript。登录与验证交给用户，失败不返回样例。AI 真实实现为 `OpenAICompatibleAIProvider`（支持 DeepSeek `deepseek-chat` / `deepseek-reasoner`，JSON Mode + 结构校验 + 指数退避重试），Ozon 真实实现为 `OzonSellerClient` + `RealOzonConnector`（`/v3/product/import` 异步提交后轮询 `/v1/product/import/info`），类目/属性元数据经 `OzonCatalogService` 缓存到本地 SQLite；真实来源仍会阻止进入 Mock AI，真实发布始终需要人工确认。
 
 采集请求默认 `mode=real`，只有测试显式指定 `mode=mock` 才会调用样例。商品响应带 `data_kind`、`data_provider`；新样例来源为 `mock_1688`。真实保存遇到旧 `1688` 固定样例时保留并迁移样例的来源命名空间，再创建真实记录，避免互相覆盖。浏览器快照和完整网络响应仅存在于内存，数据库只保存解析后的商品资料，不保存页面脚本、Cookie 或登录 Token。
 

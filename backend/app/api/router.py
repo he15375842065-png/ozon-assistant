@@ -5,13 +5,33 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
+    build_ozon_client,
     build_workflow,
     get_runtime_settings,
     get_session,
     pricing_options_from_settings,
 )
 from app.core.config import Settings
-from app.core.errors import ValidationError
+from app.core.errors import IntegrationError, ValidationError
+from app.integrations.ai import (
+    AIProviderAuthError,
+    AIProviderError,
+    OpenAICompatibleAIProvider,
+)
+from app.integrations.ozon import OzonAPIError, OzonAuthError, OzonSellerClient
+from app.repositories import (
+    DraftRepository,
+    LogRepository,
+    OzonCatalogRepository,
+    ProductRepository,
+    TaskRepository,
+)
+from app.schemas.ozon import (
+    OzonCategoryAttributeRead,
+    OzonCategoryRead,
+    OzonCheckRequest,
+)
+from app.services.ozon_catalog import OzonCatalogService
 from app.pricing import PricingInput
 from app.repositories import DraftRepository, LogRepository, ProductRepository, TaskRepository
 from app.schemas.dashboard import DashboardRead
@@ -31,7 +51,7 @@ from app.schemas.products import (
     ProductUpdate,
     WorkflowResponse,
 )
-from app.schemas.settings import SettingsRead, SettingsUpdate
+from app.schemas.settings import AICheckRequest, SettingsRead, SettingsUpdate
 from app.schemas.tasks import TaskList, TaskRead
 from app.services.dashboard import DashboardService
 from app.services.presenters import present_draft, present_log, present_product, present_task
@@ -321,6 +341,146 @@ def update_settings(
     return _settings_read(settings)
 
 
+@router.post("/settings/ai/check", tags=["settings"])
+def check_ai_connection(
+    request: AICheckRequest,
+    settings: Settings = Depends(get_runtime_settings),
+) -> dict[str, object]:
+    """Test connectivity and credentials of the real AI provider.
+
+    Empty fields fall back to the current runtime settings. The API key is
+    never returned in the response.
+    """
+    base_url = (request.base_url or settings.ai_base_url or "").strip()
+    api_key = request.api_key or settings.ai_api_key or ""
+    model = (request.model or settings.ai_model or "").strip()
+    if not base_url or not api_key:
+        raise ValidationError("请先填写 Base URL 和 API Key，再测试连接。")
+    provider = OpenAICompatibleAIProvider(
+        base_url=base_url,
+        api_key=api_key,
+        model=model or "deepseek-chat",
+        timeout_s=min(settings.ai_timeout_s, 30.0),
+        max_retries=0,
+    )
+    try:
+        result = provider.check_connection()
+    except AIProviderAuthError as exc:
+        raise ValidationError(str(exc)) from exc
+    except AIProviderError as exc:
+        raise IntegrationError(str(exc)) from exc
+    return {"ok": True, "base_url": base_url, "model": provider.model, **result}
+
+
+@router.post("/settings/ozon/check", tags=["settings"])
+def check_ozon_connection(
+    request: OzonCheckRequest,
+    settings: Settings = Depends(get_runtime_settings),
+) -> dict[str, object]:
+    """Test connectivity and credentials of the Ozon Seller API.
+
+    Empty fields fall back to the current runtime settings. Credentials are
+    never returned in the response.
+    """
+    client = build_ozon_client(
+        settings, client_id=request.client_id, api_key=request.api_key
+    )
+    try:
+        result = client.check_connection()
+    except OzonAuthError as exc:
+        raise ValidationError(str(exc)) from exc
+    except OzonAPIError as exc:
+        raise IntegrationError(str(exc)) from exc
+    return {"ok": True, **result}
+
+
+def _ozon_catalog_service(
+    session: Session, settings: Settings
+) -> tuple[OzonSellerClient, OzonCatalogService]:
+    client = build_ozon_client(settings)
+    service = OzonCatalogService(
+        OzonCatalogRepository(session), LogRepository(session)
+    )
+    return client, service
+
+
+@router.post("/ozon/categories/sync", tags=["ozon"])
+def sync_ozon_categories(
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_runtime_settings),
+) -> dict[str, object]:
+    """Sync the full Ozon category tree into the local cache."""
+    client, service = _ozon_catalog_service(session, settings)
+    try:
+        result = service.sync_tree(client)
+    except OzonAuthError as exc:
+        raise ValidationError(str(exc)) from exc
+    except OzonAPIError as exc:
+        raise IntegrationError(str(exc)) from exc
+    session.commit()
+    return result
+
+
+@router.get("/ozon/categories", tags=["ozon"])
+def search_ozon_categories(
+    q: str = Query(min_length=1, max_length=120),
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> list[OzonCategoryRead]:
+    """Search the locally cached Ozon category tree."""
+    catalog = OzonCatalogRepository(session)
+    return [
+        OzonCategoryRead(
+            category_id=item.category_id,
+            name=item.name,
+            parent_category_id=item.parent_category_id,
+            level=item.level,
+        )
+        for item in catalog.search_categories(q, limit=limit)
+    ]
+
+
+@router.post(
+    "/ozon/categories/{category_id}/attributes/sync", tags=["ozon"]
+)
+def sync_ozon_category_attributes(
+    category_id: int,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_runtime_settings),
+) -> dict[str, object]:
+    """Sync attribute definitions for one Ozon category."""
+    client, service = _ozon_catalog_service(session, settings)
+    try:
+        result = service.sync_attributes(client, category_id)
+    except OzonAuthError as exc:
+        raise ValidationError(str(exc)) from exc
+    except OzonAPIError as exc:
+        raise IntegrationError(str(exc)) from exc
+    session.commit()
+    return result
+
+
+@router.get(
+    "/ozon/categories/{category_id}/attributes", tags=["ozon"]
+)
+def get_ozon_category_attributes(
+    category_id: int,
+    session: Session = Depends(get_session),
+) -> list[OzonCategoryAttributeRead]:
+    """List cached attribute definitions for one Ozon category."""
+    catalog = OzonCatalogRepository(session)
+    return [
+        OzonCategoryAttributeRead(
+            attribute_id=item.attribute_id,
+            name=item.name,
+            is_required=item.is_required,
+            attribute_type=item.attribute_type,
+            dictionary_size=len(item.dictionary_values or []),
+        )
+        for item in catalog.get_attributes(category_id)
+    ]
+
+
 @router.get("/capabilities", response_model=dict[str, object], tags=["system"])
 @router.get("/features", response_model=dict[str, object], tags=["system"])
 def capabilities() -> dict[str, object]:
@@ -332,6 +492,7 @@ def capabilities() -> dict[str, object]:
             "collection_data_provenance",
             "product_library",
             "mock_ai_processing",
+            "real_ai_processing",
             "ozon_mapping",
             "deterministic_pricing",
             "draft_review",
@@ -340,14 +501,13 @@ def capabilities() -> dict[str, object]:
             "logs",
         ],
         "planned": [
-            "real_ai_providers",
             "real_ozon_connector",
             "inventory_sync",
             "order_management",
         ],
         "limitations": {
             "1688_browser_collection": "需用户在专用浏览器完成登录；验证码、访问限制或字段不完整会报错，不会使用模拟商品填充。",
-            "ai_processing": "当前仅模拟 AI；禁止用于真实商品。",
+            "ai_processing": "真实 AI（OpenAI Compatible，含 DeepSeek）已接入；使用 mock 时禁止用于真实商品。",
             "ozon_publish": "当前仅模拟发布；没有真实 Ozon 发布能力。",
         },
     }

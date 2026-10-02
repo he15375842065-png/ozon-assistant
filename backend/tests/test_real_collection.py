@@ -220,4 +220,5 @@ def test_browser_mode_can_be_selected_in_settings(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["source_provider"] == "browser"
     assert response.json()["source_browser_profile"]
-    assert "real_ai_providers" in client.get(f"{API}/features").json()["planned"]
+    assert "real_ai_processing" in client.get(f"{API}/features").json()["implemented"]
+    assert "real_ai_providers" not in client.get(f"{API}/features").json()["planned"]

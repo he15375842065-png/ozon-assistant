@@ -31,14 +31,20 @@ class Settings(BaseSettings):
     source_provider: Literal["browser", "mock"] = "browser"
     source_browser_profile: str = "./data/1688-browser-profile"
     source_browser_timeout_ms: int = Field(default=45000, ge=5000, le=180000)
-    ai_provider: Literal["mock"] = "mock"
+    ai_provider: Literal["mock", "openai_compatible"] = "mock"
     ai_model: str = "mock-product-processor-v1"
     ai_temperature: float = 0.2
     ai_base_url: str | None = None
     ai_api_key: str | None = None
-    ozon_mode: Literal["mock"] = "mock"
+    ai_timeout_s: float = Field(default=60.0, ge=5, le=600)
+    ai_max_retries: int = Field(default=2, ge=0, le=5)
+    ozon_mode: Literal["mock", "real"] = "mock"
     ozon_client_id: str | None = None
     ozon_api_key: str | None = None
+    ozon_api_base_url: str = "https://api-seller.ozon.ru"
+    ozon_timeout_s: float = Field(default=60.0, ge=5, le=600)
+    media_cache_dir: str = "./data/media"
+    media_public_base_url: str | None = None
 
     pricing_exchange_rate: float = 12.5
     pricing_domestic_shipping: float = 8.0

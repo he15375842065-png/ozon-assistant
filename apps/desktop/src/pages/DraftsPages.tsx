@@ -122,6 +122,10 @@ export function DraftReviewPage({ draft: initialDraft, onBack, notify, onPublish
   const [categoryId, setCategoryId] = useState(String(initialDraft.category_id || ""));
   const [categoryName, setCategoryName] = useState(initialDraft.category_name || "");
   const [price, setPrice] = useState(String(initialDraft.suggested_price ?? initialDraft.price ?? ""));
+  const [weightG, setWeightG] = useState(String(initialDraft.weight_g ?? ""));
+  const [lengthMm, setLengthMm] = useState(String(initialDraft.length_mm ?? ""));
+  const [widthMm, setWidthMm] = useState(String(initialDraft.width_mm ?? ""));
+  const [heightMm, setHeightMm] = useState(String(initialDraft.height_mm ?? ""));
   const [attributes, setAttributes] = useState<EditableAttribute[]>(() => editableAttributes(initialDraft.attributes));
   const [skus, setSkus] = useState<DraftSku[]>(() => (initialDraft.skus || []).map((sku) => ({ ...sku })));
   const [images, setImages] = useState<string[]>(() => [...(initialDraft.images || [])]);
@@ -144,6 +148,10 @@ export function DraftReviewPage({ draft: initialDraft, onBack, notify, onPublish
       setCategoryId(String(value.category_id || ""));
       setCategoryName(value.category_name || "");
       setPrice(String(value.suggested_price ?? value.price ?? ""));
+      setWeightG(String(value.weight_g ?? ""));
+      setLengthMm(String(value.length_mm ?? ""));
+      setWidthMm(String(value.width_mm ?? ""));
+      setHeightMm(String(value.height_mm ?? ""));
       setAttributes(editableAttributes(value.attributes));
       setSkus((value.skus || []).map((sku) => ({ ...sku })));
       setImages([...(value.images || [])]);
@@ -152,16 +160,28 @@ export function DraftReviewPage({ draft: initialDraft, onBack, notify, onPublish
   }, [initialDraft.id]);
 
   const locked = draft.status === "published" || draft.status === "stale";
-  const patch = useMemo<Partial<Draft>>(() => ({
-    title_ru: title.trim(),
-    description_ru: description.trim(),
-    category_id: categoryId.trim(),
-    attributes: attributePayload(attributes),
-    images,
-    skus: skus.map((sku) => ({ ...sku, price: Number(price) || 0, stock: Math.max(0, Number(sku.stock) || 0) })),
-    suggested_price: Number(price) || 0,
-    stock: skus.reduce((total, sku) => total + Math.max(0, Number(sku.stock) || 0), 0),
-  }), [attributes, categoryId, description, images, price, skus, title]);
+  const patch = useMemo<Partial<Draft>>(() => {
+    const data: Partial<Draft> = {
+      title_ru: title.trim(),
+      description_ru: description.trim(),
+      category_id: categoryId.trim(),
+      attributes: attributePayload(attributes),
+      images,
+      skus: skus.map((sku) => ({ ...sku, price: Number(price) || 0, stock: Math.max(0, Number(sku.stock) || 0) })),
+      suggested_price: Number(price) || 0,
+      stock: skus.reduce((total, sku) => total + Math.max(0, Number(sku.stock) || 0), 0),
+    };
+    // Weight/dimensions are required by the real Ozon import; omit when empty.
+    const weight = Number(weightG);
+    if (weight > 0) data.weight_g = Math.round(weight);
+    const length = Number(lengthMm);
+    if (length > 0) data.length_mm = Math.round(length);
+    const width = Number(widthMm);
+    if (width > 0) data.width_mm = Math.round(width);
+    const height = Number(heightMm);
+    if (height > 0) data.height_mm = Math.round(height);
+    return data;
+  }, [attributes, categoryId, description, heightMm, images, lengthMm, price, skus, title, weightG, widthMm]);
 
   function syncDraftState(value: Draft) {
     setDraft(value);
@@ -170,6 +190,10 @@ export function DraftReviewPage({ draft: initialDraft, onBack, notify, onPublish
     setCategoryId(String(value.category_id || ""));
     setCategoryName(value.category_name || "");
     setPrice(String(value.suggested_price ?? value.price ?? ""));
+    setWeightG(String(value.weight_g ?? ""));
+    setLengthMm(String(value.length_mm ?? ""));
+    setWidthMm(String(value.width_mm ?? ""));
+    setHeightMm(String(value.height_mm ?? ""));
     setAttributes(editableAttributes(value.attributes));
     setSkus((value.skus || []).map((sku) => ({ ...sku })));
     setImages([...(value.images || [])]);
@@ -316,6 +340,18 @@ export function DraftReviewPage({ draft: initialDraft, onBack, notify, onPublish
                     <Input aria-label="属性值" disabled={locked} className="h-8" value={attribute.value} onChange={(event) => updateAttribute(attribute.id, "value", event.target.value)} placeholder="属性值" />
                     <Button aria-label="删除属性" title="删除属性" disabled={locked} size="icon" variant="ghost" onClick={() => setAttributes((current) => current.filter((row) => row.id !== attribute.id))}><Trash2 className="h-3.5 w-3.5" /></Button>
                   </div>) : <div className="p-10 text-center text-xs text-slate-400">暂无属性，请添加 Ozon 所需属性</div>}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">重量与尺寸</h3>
+                  <span className="text-[10px] text-slate-400">真实发布必填</span>
+                </div>
+                <div className="mt-3 grid gap-4 sm:grid-cols-4">
+                  <Field label="重量" hint="克"><Input disabled={locked} type="number" min="1" step="1" value={weightG} onChange={(event) => setWeightG(event.target.value)} placeholder="例如 300" /></Field>
+                  <Field label="长" hint="毫米"><Input disabled={locked} type="number" min="1" step="1" value={lengthMm} onChange={(event) => setLengthMm(event.target.value)} placeholder="例如 200" /></Field>
+                  <Field label="宽" hint="毫米"><Input disabled={locked} type="number" min="1" step="1" value={widthMm} onChange={(event) => setWidthMm(event.target.value)} placeholder="例如 150" /></Field>
+                  <Field label="高" hint="毫米"><Input disabled={locked} type="number" min="1" step="1" value={heightMm} onChange={(event) => setHeightMm(event.target.value)} placeholder="例如 50" /></Field>
                 </div>
               </div>
               <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />AI 类目与属性只是建议，请按 Ozon 后台的最新要求核对必填项。</div>

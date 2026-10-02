@@ -33,13 +33,13 @@ V1 验收条件：输入一个合法格式的 1688 URL 后，系统能创建任�
 - [x] 真实/模拟来源隔离与历史样例标记；真实商品禁止 Mock AI 改写
 - [ ] 真实 1688 商品页端到端验收（当前只有合成格式和 API 测试，自动站点访问被安全策略拒绝）
 - [ ] 根据实际页面完善解析兼容性，必要时接入官方或明确授权的第三方 Provider
-- 接入至少一个真实 AI Provider，并支持 OpenAI Compatible 配置
-- 同步 Ozon 类目与属性元数据，完善人工可编辑映射
-- 接入 Ozon 商品、价格和库存 API Client
-- 完善认证、限流、退避重试、幂等和审计日志
-- 在沙箱/受控商品上验证真实发布；每次发布仍需人工确认
-- 图片下载、处理、缓存和上传管线
-- Provider 健康检查与设置页连接测试
+- [x] 接入真实 AI Provider：OpenAI Compatible（含 DeepSeek `deepseek-chat` / `deepseek-reasoner`），设置页可测试连接
+- [x] 同步 Ozon 类目与属性元数据：类目树/属性定义缓存到本地，草稿属性按俄语名映射为 Ozon attribute ID（含字典值匹配与必填缺失检测）
+- [x] 接入 Ozon 商品、价格和库存 API Client（`/v3/product/import`、`/v1/product/import/info`、`/v3/product/list`、`/v1/product/import/prices`、`/v2/products/stocks`），真实发布走异步 task 轮询
+- [x] 认证、限流、退避重试和审计日志：401/403 明确报错、429/5xx 指数退避重试、工作流日志准确标记 mock/real
+- [ ] 在沙箱/受控商品上验证真实发布；每次发布仍需人工确认
+- [x] 图片下载、处理、缓存管线（MIME/大小校验、转 JPEG、URL 哈希缓存；Ozon 只接受公开 URL，未配置公开地址时明确提示）
+- [x] Provider 健康检查与设置页连接测试（AI 与 Ozon 均可在保存前测试）
 
 V2 验收条件：用户配置有效凭证后，可以采集真实商品、调用真实 AI、生成符合 Ozon 当前要求的草稿，并在预览和确认后安全发布受控测试商品。
 

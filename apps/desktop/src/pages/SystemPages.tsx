@@ -33,7 +33,7 @@ import {
 import { api, API_URL, errorMessage } from "../lib/api";
 import { demoLogs, demoSettings, demoTasks } from "../lib/demo-data";
 import { formatDate, statusLabel } from "../lib/format";
-import type { AppSettings, AppSettingsUpdate, LogEntry, TaskItem } from "../lib/types";
+import type { AppSettings, AppSettingsUpdate, LogEntry, OzonCategory, TaskItem } from "../lib/types";
 import { listItems } from "../lib/types";
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, Input, LoadingState, PageHeader, Select, cn } from "../components/ui";
 
@@ -117,6 +117,14 @@ export function SettingsPage({ notify }: { notify: Notify }) {
   const [aiKey, setAiKey] = useState("");
   const [showOzonKey, setShowOzonKey] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
+  const [checkingAi, setCheckingAi] = useState(false);
+  const [aiCheckMessage, setAiCheckMessage] = useState("");
+  const [checkingOzon, setCheckingOzon] = useState(false);
+  const [ozonCheckMessage, setOzonCheckMessage] = useState("");
+  const [syncingCategories, setSyncingCategories] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [categoryResults, setCategoryResults] = useState<OzonCategory[]>([]);
+  const [categoryMessage, setCategoryMessage] = useState("");
   const [openingSourceBrowser, setOpeningSourceBrowser] = useState(false);
   const [sourceBrowserMessage, setSourceBrowserMessage] = useState("");
 
@@ -127,6 +135,71 @@ export function SettingsPage({ notify }: { notify: Notify }) {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  function applyDeepSeekPreset() {
+    update("ai_provider", "openai_compatible");
+    update("ai_base_url", "https://api.deepseek.com");
+    update("ai_model", "deepseek-chat");
+    setAiCheckMessage("");
+    notify("已填入 DeepSeek 预设，输入 API Key 后保存并测试连接", "info");
+  }
+
+  async function testAiConnection() {
+    setCheckingAi(true);
+    setAiCheckMessage("");
+    try {
+      const result = await api.checkAiConnection({
+        base_url: settings.ai_base_url || null,
+        api_key: aiKey || undefined,
+        model: settings.ai_model || null,
+      });
+      const verified = result.verified
+        ? `，服务端返回 ${result.models.length} 个可用模型`
+        : "（该网关未提供模型列表，仅验证连通性）";
+      setAiCheckMessage(`连接成功：${result.base_url} / ${result.model}${verified}`);
+      notify("AI 连接测试成功", "success");
+    }
+    catch (reason) { const message = `连接失败：${errorMessage(reason)}`; setAiCheckMessage(message); notify(message, "error"); }
+    finally { setCheckingAi(false); }
+  }
+
+  async function testOzonConnection() {
+    setCheckingOzon(true);
+    setOzonCheckMessage("");
+    try {
+      const result = await api.checkOzonConnection({
+        ...(ozonClientId ? { client_id: ozonClientId } : {}),
+        ...(ozonKey ? { api_key: ozonKey } : {}),
+      });
+      const message = `连接成功：Ozon Seller API 可达（返回 ${result.items_returned} 个商品用于校验）`;
+      setOzonCheckMessage(message);
+      notify("Ozon 连接测试成功", "success");
+    }
+    catch (reason) { const message = `连接失败：${errorMessage(reason)}`; setOzonCheckMessage(message); notify(message, "error"); }
+    finally { setCheckingOzon(false); }
+  }
+
+  async function syncOzonCategories() {
+    setSyncingCategories(true);
+    setCategoryMessage("");
+    try {
+      const result = await api.syncOzonCategories();
+      setCategoryMessage(`类目树同步完成：${result.categories} 个类目已缓存到本地`);
+      notify("Ozon 类目同步完成", "success");
+    }
+    catch (reason) { const message = `同步失败：${errorMessage(reason)}`; setCategoryMessage(message); notify(message, "error"); }
+    finally { setSyncingCategories(false); }
+  }
+
+  async function searchOzonCategories() {
+    const query = categoryQuery.trim();
+    if (!query) { setCategoryResults([]); return; }
+    try {
+      setCategoryResults(await api.searchOzonCategories(query));
+      setCategoryMessage("");
+    }
+    catch (reason) { setCategoryMessage(`搜索失败：${errorMessage(reason)}`); }
+  }
 
   async function openSourceBrowser() {
     setOpeningSourceBrowser(true);
@@ -173,8 +246,8 @@ export function SettingsPage({ notify }: { notify: Notify }) {
     { id: "ozon" as const, label: "Ozon API", description: "认证与发布模式", icon: CloudCog }, { id: "ai" as const, label: "AI 模型", description: "Provider 与模型参数", icon: Sparkles }, { id: "source" as const, label: "1688 数据源", description: "采集 Provider", icon: Globe2 }, { id: "pricing" as const, label: "定价规则", description: "成本与利润参数", icon: CircleDollarSign }, { id: "system" as const, label: "系统", description: "本地服务与外观", icon: Settings2 },
   ];
   return <div><PageHeader eyebrow="Configuration" title="设置" description="管理外部服务、模型和业务参数。凭证不会写入源码，也不会出现在运行日志中。" actions={<Button disabled={saving || loading} onClick={() => void save()}>{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}保存设置</Button>} />{error && <div className="mb-4"><ErrorBanner compact message={error} onRetry={() => void load()} /></div>}<div className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]"><Card className="h-fit p-2">{tabs.map((item) => { const Icon = item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={cn("flex w-full items-center gap-3 rounded-xl p-3 text-left transition", tab === item.id ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50")}><span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", tab === item.id ? "bg-white text-indigo-600 shadow-sm dark:bg-indigo-500/15 dark:text-indigo-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800")}><Icon className="h-4 w-4" /></span><span><strong className="block text-xs font-semibold">{item.label}</strong><span className="mt-0.5 block text-[10px] text-slate-400">{item.description}</span></span></button>; })}</Card><Card className="p-5 sm:p-6">{loading ? <LoadingState label="正在加载本地设置" /> : <>
-      {tab === "ozon" && <SettingsSection icon={CloudCog} title="Ozon API" description="第一阶段默认使用 Mock Connector，切换真实模式前请完整测试商品审核流程。"><div className="grid gap-5 sm:grid-cols-2"><Field label="Client ID" hint={settings.ozon_client_id_configured ? "已配置" : "未配置"}><Input value={ozonClientId} onChange={(event) => setOzonClientId(event.target.value)} placeholder={settings.ozon_client_id_configured ? "已配置，输入新值可替换" : "输入 Ozon Client ID"} /></Field><Field label="API Key" hint={settings.ozon_api_key_configured ? "已配置" : "未配置"}><div className="relative"><Input className="pr-10" type={showOzonKey ? "text" : "password"} value={ozonKey} onChange={(event) => setOzonKey(event.target.value)} placeholder={settings.ozon_api_key_configured ? "••••••••••••••••" : "输入 Ozon API Key"} /><button aria-label={showOzonKey ? "隐藏 Ozon API Key" : "显示 Ozon API Key"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" onClick={() => setShowOzonKey((value) => !value)} type="button">{showOzonKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></Field></div><Field label="发布连接器" className="mt-5"><Select className="w-full" value={settings.ozon_mode} onChange={(event) => update("ozon_mode", event.target.value)}><option value="mock">Mock（安全演示）</option><option value="real" disabled>真实 Ozon API（开发中）</option></Select></Field><div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span>发布、批量改价与库存修改等高风险操作始终需要人工确认。当前 Mock 模式不会修改真实店铺。</span></div></SettingsSection>}
-      {tab === "ai" && <SettingsSection icon={Bot} title="AI Gateway" description="统一模型接口已预留；第一阶段使用 Mock AI 跑通完整链路。"><div className="grid gap-5 sm:grid-cols-2"><Field label="Provider"><Select className="w-full" value={settings.ai_provider} onChange={(event) => update("ai_provider", event.target.value)}><option value="mock">Mock AI</option><option value="openai-compatible" disabled>OpenAI Compatible（开发中）</option><option value="openai" disabled>OpenAI（开发中）</option><option value="anthropic" disabled>Anthropic（开发中）</option><option value="gemini" disabled>Gemini（开发中）</option></Select></Field><Field label="Model"><Input value={settings.ai_model} onChange={(event) => update("ai_model", event.target.value)} placeholder="模型名称" /></Field><Field label="Base URL"><Input value={settings.ai_base_url || ""} onChange={(event) => update("ai_base_url", event.target.value || null)} placeholder="使用 Provider 默认地址" /></Field><Field label="API Key" hint={settings.ai_api_key_configured ? "已配置" : "未配置"}><div className="relative"><Input className="pr-10" type={showAiKey ? "text" : "password"} value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={settings.ai_api_key_configured ? "••••••••••••••••" : "输入 AI API Key"} /><button aria-label={showAiKey ? "隐藏 AI API Key" : "显示 AI API Key"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" onClick={() => setShowAiKey((value) => !value)} type="button">{showAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></Field><Field label="Temperature" hint="建议 0–0.4"><Input type="number" min="0" max="2" step="0.1" value={settings.ai_temperature} onChange={(event) => update("ai_temperature", Number(event.target.value))} /></Field></div><div className="mt-5 flex items-start gap-3 rounded-xl bg-violet-50 p-4 text-xs leading-5 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300"><FileCode2 className="mt-0.5 h-4 w-4 shrink-0" /><span>商品加工优先使用 Structured Output / JSON Schema。Mock AI 可以在没有 API Key 的情况下完整演示流程。</span></div></SettingsSection>}
+      {tab === "ozon" && <SettingsSection icon={CloudCog} title="Ozon API" description="第一阶段默认使用 Mock Connector，切换真实模式前请完整测试商品审核流程。"><div className="grid gap-5 sm:grid-cols-2"><Field label="Client ID" hint={settings.ozon_client_id_configured ? "已配置" : "未配置"}><Input value={ozonClientId} onChange={(event) => setOzonClientId(event.target.value)} placeholder={settings.ozon_client_id_configured ? "已配置，输入新值可替换" : "输入 Ozon Client ID"} /></Field><Field label="API Key" hint={settings.ozon_api_key_configured ? "已配置" : "未配置"}><div className="relative"><Input className="pr-10" type={showOzonKey ? "text" : "password"} value={ozonKey} onChange={(event) => setOzonKey(event.target.value)} placeholder={settings.ozon_api_key_configured ? "••••••••••••••••" : "输入 Ozon API Key"} /><button aria-label={showOzonKey ? "隐藏 Ozon API Key" : "显示 Ozon API Key"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" onClick={() => setShowOzonKey((value) => !value)} type="button">{showOzonKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></Field></div><Field label="发布连接器" className="mt-5"><Select className="w-full" value={settings.ozon_mode} onChange={(event) => update("ozon_mode", event.target.value)}><option value="mock">Mock（安全演示）</option><option value="real">真实 Ozon API</option></Select></Field><div className="mt-4 flex flex-wrap items-center gap-3"><Button variant="secondary" size="sm" disabled={checkingOzon} onClick={() => void testOzonConnection()}>{checkingOzon ? "测试中…" : "测试连接"}</Button>{ozonCheckMessage && <span className={cn("text-xs", ozonCheckMessage.startsWith("连接成功") ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300")}>{ozonCheckMessage}</span>}</div><p className="mt-2 text-[11px] leading-5 text-slate-400">未保存的新凭据会优先用于本次测试；留空则使用已保存的配置。</p><div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span>发布、批量改价与库存修改等高风险操作始终需要人工确认。{settings.ozon_mode === "real" ? "当前为真实模式：发布会调用 Ozon Seller API 并产生真实商品，请先用测试商品验证。" : "当前 Mock 模式不会修改真实店铺。"}</span></div><div className="mt-6 border-t border-slate-100 pt-6 dark:border-slate-800"><h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">类目与属性</h3><p className="mt-1 text-xs leading-5 text-slate-400">同步 Ozon 官方类目树到本地缓存，发布时用于校验必填属性。需要先配置有效的 API 凭据。</p><div className="mt-4 flex flex-wrap items-center gap-3"><Button variant="secondary" size="sm" disabled={syncingCategories} onClick={() => void syncOzonCategories()}>{syncingCategories ? "同步中…" : "同步类目树"}</Button><div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" placeholder="搜索本地类目，例如 连衣裙" value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchOzonCategories(); }} /></div><Button variant="secondary" size="sm" onClick={() => void searchOzonCategories()}>搜索</Button></div>{categoryMessage && <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{categoryMessage}</p>}{categoryResults.length > 0 && <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">{categoryResults.map((category) => <div key={category.category_id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-xs last:border-0 dark:border-slate-800"><div className="min-w-0"><p className="truncate font-semibold text-slate-700 dark:text-slate-200">{category.name}</p><p className="mt-0.5 text-[10px] text-slate-400">ID {category.category_id}{category.parent_category_id ? ` · 上级 ${category.parent_category_id}` : ""}</p></div><Button size="sm" variant="ghost" disabled={syncingCategories} onClick={() => void (async () => { try { const result = await api.syncOzonCategoryAttributes(category.category_id); notify(`类目 ${category.name} 属性同步完成：${result.attributes} 个（必填 ${result.required} 个）`, "success"); } catch (reason) { notify(errorMessage(reason), "error"); } })()}>同步属性</Button></div>)}</div>}</div></SettingsSection>}
+      {tab === "ai" && <SettingsSection icon={Bot} title="AI Gateway" description="统一模型接口：Mock AI 用于演示，OpenAI Compatible 可接入 DeepSeek 等真实模型。"><div className="grid gap-5 sm:grid-cols-2"><Field label="Provider"><Select className="w-full" value={settings.ai_provider} onChange={(event) => update("ai_provider", event.target.value)}><option value="mock">Mock AI</option><option value="openai_compatible">OpenAI Compatible（含 DeepSeek）</option><option value="openai" disabled>OpenAI（开发中）</option><option value="anthropic" disabled>Anthropic（开发中）</option><option value="gemini" disabled>Gemini（开发中）</option></Select></Field><Field label="Model"><Input value={settings.ai_model} onChange={(event) => update("ai_model", event.target.value)} placeholder="模型名称" /></Field><Field label="Base URL"><Input value={settings.ai_base_url || ""} onChange={(event) => update("ai_base_url", event.target.value || null)} placeholder="使用 Provider 默认地址" /></Field><Field label="API Key" hint={settings.ai_api_key_configured ? "已配置" : "未配置"}><div className="relative"><Input className="pr-10" type={showAiKey ? "text" : "password"} value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={settings.ai_api_key_configured ? "••••••••••••••••" : "输入 AI API Key"} /><button aria-label={showAiKey ? "隐藏 AI API Key" : "显示 AI API Key"} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" onClick={() => setShowAiKey((value) => !value)} type="button">{showAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></Field><Field label="Temperature" hint="建议 0–0.4"><Input type="number" min="0" max="2" step="0.1" value={settings.ai_temperature} onChange={(event) => update("ai_temperature", Number(event.target.value))} /></Field></div><div className="mt-5 flex items-start gap-3 rounded-xl bg-violet-50 p-4 text-xs leading-5 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300"><FileCode2 className="mt-0.5 h-4 w-4 shrink-0" /><span>真实 AI 通过 OpenAI Compatible 接口调用，商品加工使用 JSON 结构化输出。DeepSeek 的 deepseek-chat 支持 JSON 模式；deepseek-reasoner 会自动降级为文本解析。真实商品加工需要真实 AI，Mock AI 仍会被阻止用于真实商品。</span></div><div className="mt-4 flex flex-wrap items-center gap-3"><Button disabled={checkingAi} onClick={() => applyDeepSeekPreset()} variant="secondary">填入 DeepSeek 预设</Button><Button disabled={checkingAi} onClick={() => void testAiConnection()}>{checkingAi ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}测试连接</Button>{aiCheckMessage && <span className="text-xs text-slate-500 dark:text-slate-400">{aiCheckMessage}</span>}</div></SettingsSection>}
       {tab === "source" && <SettingsSection icon={Globe2} title="1688 数据源" description="真实采集使用独立的本地浏览器会话，读取你输入的商品页面。">
         <Field label="数据源配置"><Select className="w-full" value={settings.source_provider} onChange={(event) => update("source_provider", event.target.value)}><option value="browser">真实网页采集（本地浏览器）</option><option value="mock">固定模拟样例（仅演示）</option><option value="official" disabled>1688 官方 API（尚未接入）</option></Select></Field>
         <div className="mt-6 grid gap-3 sm:grid-cols-3">{[{ icon: PackageOpen, label: "商品标题 / 图片", value: "读取实际商品页面" }, { icon: SlidersHorizontal, label: "SKU / 属性", value: "以页面提供的信息为准" }, { icon: FileText, label: "登录 / 验证", value: "需要时手动完成" }].map((item) => { const Icon = item.icon; return <div key={item.label} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><Icon className="h-4 w-4 text-indigo-500" /><p className="mt-4 text-xs font-semibold text-slate-700 dark:text-slate-200">{item.label}</p><p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">{item.value}</p></div>; })}</div>

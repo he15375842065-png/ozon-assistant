@@ -28,12 +28,12 @@ class SettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_provider: Literal["browser", "mock"] | None = None
-    ai_provider: Literal["mock"] | None = None
+    ai_provider: Literal["mock", "openai_compatible"] | None = None
     ai_model: str | None = Field(default=None, min_length=1, max_length=120)
     ai_temperature: float | None = Field(default=None, ge=0, le=2)
     ai_base_url: str | None = None
     ai_api_key: str | None = Field(default=None, min_length=1, repr=False)
-    ozon_mode: Literal["mock"] | None = None
+    ozon_mode: Literal["mock", "real"] | None = None
     ozon_client_id: str | None = Field(default=None, max_length=120)
     ozon_api_key: str | None = Field(default=None, min_length=1, repr=False)
     exchange_rate: float | None = Field(default=None, gt=0)
@@ -81,5 +81,34 @@ class SettingsUpdate(BaseModel):
             or parsed.password is not None
         ):
             raise ValueError("ai_base_url must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
+
+class AICheckRequest(BaseModel):
+    """Connection test for a real AI provider.
+
+    Any field left empty falls back to the current runtime settings, so the
+    user can test credentials before saving them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str | None = None
+    api_key: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("base_url must be an absolute HTTP(S) URL")
         return value.rstrip("/")
 

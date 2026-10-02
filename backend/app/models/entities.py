@@ -190,6 +190,10 @@ class OzonDraft(TimestampMixin, Base):
     pricing: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    weight_g: Mapped[int | None] = mapped_column(Integer)
+    length_mm: Mapped[int | None] = mapped_column(Integer)
+    width_mm: Mapped[int | None] = mapped_column(Integer)
+    height_mm: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(
         String(32), default="review", server_default="review", index=True, nullable=False
     )
@@ -234,3 +238,46 @@ class AppLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True, nullable=False
     )
+
+
+class OzonCategory(TimestampMixin, Base):
+    """Cached Ozon category tree node synced from the Seller API."""
+
+    __tablename__ = "ozon_categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(Integer, unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    parent_category_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    attributes: Mapped[list["OzonCategoryAttribute"]] = relationship(
+        back_populates="category", cascade="all, delete-orphan"
+    )
+
+
+class OzonCategoryAttribute(TimestampMixin, Base):
+    """Attribute definition for one Ozon category, synced from the Seller API."""
+
+    __tablename__ = "ozon_category_attributes"
+    __table_args__ = (
+        UniqueConstraint("category_id", "attribute_id", name="uq_category_attribute"),
+        Index("ix_ozon_category_attributes_category", "category_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("ozon_categories.category_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attribute_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    is_required: Mapped[bool] = mapped_column(default=False, nullable=False)
+    attribute_type: Mapped[str] = mapped_column(String(60), default="", nullable=False)
+    dictionary_values: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    category: Mapped[OzonCategory] = relationship(back_populates="attributes")

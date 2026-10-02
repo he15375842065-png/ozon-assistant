@@ -233,8 +233,18 @@ class ProductWorkflowService:
             raise ConflictError("该草稿已发布")
         if draft.status == "stale":
             raise ConflictError("源商品已发生变化，请重新进行 AI 加工后再发布草稿")
-        self._validate_publishable_draft(draft)
-        task = self.task_service.create("publish_ozon", {"draft_id": draft.id, "mock": True, "data_kind": "mock"})
+        self._validate_publishable_draft(
+            draft, real_mode=not isinstance(self.ozon_connector, MockOzonConnector)
+        )
+        is_mock = isinstance(self.ozon_connector, MockOzonConnector)
+        data_kind = source_data_kind(
+            draft.product.source_product.source,
+            draft.product.source_product.raw_payload,
+        )
+        task = self.task_service.create(
+            "publish_ozon",
+            {"draft_id": draft.id, "mock": is_mock, "data_kind": data_kind},
+        )
         self.task_service.start(task, progress=10)
         try:
             payload = {
@@ -246,6 +256,10 @@ class ProductWorkflowService:
                 "images": draft.images,
                 "price": float(draft.price),
                 "stock": draft.stock,
+                "weight_g": draft.weight_g,
+                "length_mm": draft.length_mm,
+                "width_mm": draft.width_mm,
+                "height_mm": draft.height_mm,
             }
             result = self.ozon_connector.publish_draft(draft.id, payload)
             draft.status = result.status
@@ -256,24 +270,35 @@ class ProductWorkflowService:
             self.products.save_status(draft.product, ozon_status="published")
             self.task_service.succeed(
                 task,
-                {"draft_id": draft.id, "publication_id": result.publication_id, "mock": True, "data_kind": "mock"},
+                {
+                    "draft_id": draft.id,
+                    "publication_id": result.publication_id,
+                    "mock": is_mock,
+                    "data_kind": data_kind,
+                },
             )
             self.logs.add(
                 "INFO",
                 "Ozon",
-                "Mock Ozon 发布成功",
-                {"draft_id": draft.id, "publication_id": result.publication_id, "mock": True, "data_kind": "mock"},
+                "Mock Ozon 发布成功" if is_mock else "Ozon 发布成功",
+                {
+                    "draft_id": draft.id,
+                    "publication_id": result.publication_id,
+                    "mock": is_mock,
+                    "data_kind": data_kind,
+                },
             )
             return draft, task.id
         except Exception as exc:
             self.task_service.fail(task, exc)
             self.logs.add(
-                "ERROR", "Ozon", "Ozon 发布失败", {"draft_id": draft.id, "error": str(exc), "mock": True, "data_kind": "mock"}
+                "ERROR", "Ozon", "Ozon 发布失败", {"draft_id": draft.id, "error": str(exc), "mock": is_mock}
             )
             raise
 
-    @staticmethod
-    def _validate_publishable_draft(draft: OzonDraft) -> None:
+    def _validate_publishable_draft(
+        self, draft: OzonDraft, *, real_mode: bool = False
+    ) -> None:
         missing: list[str] = []
         if not draft.title.strip():
             missing.append("标题")
@@ -287,6 +312,12 @@ class ProductWorkflowService:
             missing.append("图片")
         if not draft.variants:
             missing.append("SKU")
+        if real_mode:
+            # Ozon requires weight + dimensions for real product import.
+            if not draft.weight_g:
+                missing.append("重量")
+            if not (draft.length_mm and draft.width_mm and draft.height_mm):
+                missing.append("尺寸（长/宽/高）")
         if missing:
             raise ValidationError(f"草稿缺少发布必填内容：{'、'.join(missing)}")
 

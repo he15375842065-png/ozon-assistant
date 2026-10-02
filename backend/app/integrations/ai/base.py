@@ -53,10 +53,12 @@ class AIGateway:
         started = perf_counter()
         output = self.provider.generate_product(product)
         latency_ms = max(1, round((perf_counter() - started) * 1000))
+        token_usage = getattr(self.provider, "last_token_usage", None)
         return AIGeneration(
             provider=self.provider.name,
             model=self.provider.model,
             output=output,
             latency_ms=latency_ms,
+            token_usage=token_usage if isinstance(token_usage, int) else None,
         )
 

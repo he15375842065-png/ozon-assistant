@@ -5,6 +5,8 @@ import type {
   Draft,
   ListResponse,
   LogEntry,
+  OzonCategory,
+  OzonCategoryAttribute,
   PublishResponse,
   Product,
   SourceBrowserStatus,
@@ -125,6 +127,27 @@ export const api = {
   settings: () => request<AppSettings>("/settings"),
   updateSettings: (data: AppSettingsUpdate) =>
     request<AppSettings>("/settings", { method: "PATCH", body: JSON.stringify(data) }),
+  checkAiConnection: (data: { base_url?: string | null; api_key?: string; model?: string | null }) =>
+    request<{ ok: boolean; base_url: string; model: string; verified: boolean; models: string[] }>(
+      "/settings/ai/check",
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  checkOzonConnection: (data: { client_id?: string; api_key?: string }) =>
+    request<{ ok: boolean; items_returned: number }>(
+      "/settings/ozon/check",
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  syncOzonCategories: () =>
+    request<{ categories: number }>("/ozon/categories/sync", { method: "POST" }),
+  searchOzonCategories: (q: string, limit = 20) =>
+    request<OzonCategory[]>("/ozon/categories", undefined, { q, limit }),
+  syncOzonCategoryAttributes: (categoryId: number) =>
+    request<{ category_id: number; attributes: number; required: number }>(
+      `/ozon/categories/${categoryId}/attributes/sync`,
+      { method: "POST" },
+    ),
+  ozonCategoryAttributes: (categoryId: number) =>
+    request<OzonCategoryAttribute[]>(`/ozon/categories/${categoryId}/attributes`),
 };
 
 export function errorMessage(error: unknown): string {

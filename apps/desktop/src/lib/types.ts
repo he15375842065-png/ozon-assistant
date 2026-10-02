@@ -99,9 +99,29 @@ export interface Draft {
   suggested_price?: number;
   price?: number;
   stock?: number;
+  weight_g?: number | null;
+  length_mm?: number | null;
+  width_mm?: number | null;
+  height_mm?: number | null;
   profit_margin?: number;
   updated_at?: string;
   created_at?: string;
+}
+
+export interface OzonCategory {
+  category_id: number;
+  name: string;
+  parent_category_id: number | null;
+  level: number;
+  attribute_count?: number;
+}
+
+export interface OzonCategoryAttribute {
+  attribute_id: number;
+  name: string;
+  is_required: boolean;
+  attribute_type: string;
+  dictionary_size?: number;
 }
 
 export interface TaskItem {

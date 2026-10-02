@@ -32,6 +32,10 @@ class DraftRead(BaseModel):
     profit_margin: float
     pricing: dict[str, Any]
     stock: int
+    weight_g: int | None
+    length_mm: int | None
+    width_mm: int | None
+    height_mm: int | None
     publication_id: str | None
     reviewed_at: datetime | None
     published_at: datetime | None
@@ -77,6 +81,10 @@ class DraftUpdate(BaseModel):
     skus: list[DraftSkuUpdate] | None = Field(default=None, min_length=1)
     suggested_price: float | None = Field(default=None, gt=0)
     stock: int | None = Field(default=None, ge=0)
+    weight_g: int | None = Field(default=None, gt=0)
+    length_mm: int | None = Field(default=None, gt=0)
+    width_mm: int | None = Field(default=None, gt=0)
+    height_mm: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="before")
     @classmethod

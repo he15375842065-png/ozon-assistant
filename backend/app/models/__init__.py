@@ -1,6 +1,8 @@
 from app.models.entities import (
     AIResult,
     AppLog,
+    OzonCategory,
+    OzonCategoryAttribute,
     OzonDraft,
     Product,
     SourceProduct,
@@ -11,6 +13,8 @@ from app.models.entities import (
 __all__ = [
     "AIResult",
     "AppLog",
+    "OzonCategory",
+    "OzonCategoryAttribute",
     "OzonDraft",
     "Product",
     "SourceProduct",
