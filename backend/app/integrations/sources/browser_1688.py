@@ -119,6 +119,11 @@ class Alibaba1688BrowserManager:
             accept_downloads=False,
             chromium_sandbox=True,
             timeout=self.timeout_ms,
+            # 1688 风控会识别 Playwright 的自动化标记并拦截登录弹窗：
+            # 去掉 --enable-automation，关闭 AutomationControlled blink 特性，
+            # 再把 navigator.webdriver 抹掉，让页面看起来像手动打开的浏览器。
+            args=["--disable-blink-features=AutomationControlled"],
+            ignore_default_args=["--enable-automation"],
         )
         try:
             # Prefer the configured browser channel (default: Google Chrome),
@@ -148,6 +153,9 @@ class Alibaba1688BrowserManager:
                     raise
             if last_error is not None and self._context is None:
                 raise last_error
+            self._context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
             self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
             self._page.set_default_timeout(self.timeout_ms)
             self._context.on("close", lambda _: setattr(self, "_opened", False))

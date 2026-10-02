@@ -112,3 +112,68 @@ def test_settings_reject_unknown_browser_channel(client) -> None:
         "/api/v1/settings", json={"source_browser_channel": "firefox"}
     )
     assert response.status_code == 422
+
+
+def test_ensure_page_applies_anti_detection_options(tmp_path, monkeypatch) -> None:
+    import playwright.sync_api
+
+    class FakePage:
+        def wait_for_timeout(self, _ms: int) -> None:
+            pass
+
+        def is_closed(self) -> bool:
+            return False
+
+        def set_default_timeout(self, _ms: int) -> None:
+            pass
+
+        def on(self, _event: str, _callback) -> None:
+            pass
+
+    class FakeContext:
+        def __init__(self, kwargs: dict) -> None:
+            self.kwargs = kwargs
+            self.init_scripts: list[str] = []
+            self.pages = [FakePage()]
+
+        def add_init_script(self, script: str) -> None:
+            self.init_scripts.append(script)
+
+        def new_page(self):
+            return self.pages[0]
+
+        def on(self, _event: str, _callback) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeChromium:
+        def __init__(self) -> None:
+            self.launch_kwargs: list[dict] = []
+
+        def launch_persistent_context(self, **kwargs):
+            self.launch_kwargs.append(kwargs)
+            return FakeContext(kwargs)
+
+    class FakePlaywright:
+        def __init__(self) -> None:
+            self.chromium = FakeChromium()
+
+        def start(self):
+            return self
+
+        def stop(self) -> None:
+            pass
+
+    fake = FakePlaywright()
+    monkeypatch.setattr(playwright.sync_api, "sync_playwright", lambda: fake)
+    manager = Alibaba1688BrowserManager(str(tmp_path))
+    try:
+        manager._ensure_page()
+        launch_kwargs = fake.chromium.launch_kwargs[0]
+        assert "--enable-automation" in launch_kwargs["ignore_default_args"]
+        assert "--disable-blink-features=AutomationControlled" in launch_kwargs["args"]
+        assert any("webdriver" in script for script in manager._context.init_scripts)
+    finally:
+        manager.close()
