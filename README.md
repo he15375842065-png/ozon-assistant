@@ -19,7 +19,7 @@ Ozon Assistant 是一个面向单个 Ozon 店铺的 Windows 桌面工具，目�
 
 ## 当前阶段
 
-仓库正在搭建 V1 MVP。V1 只覆盖工作台、商品采集、商品库、AI 加工、Ozon 草稿审核、任务中心、日志和设置，以及支撑上述页面的本地 API 与数据库。
+仓库已完成 V1 Mock MVP 的第一轮纵向链路。当前覆盖工作台、商品采集、商品库、AI 加工、Ozon 草稿审核、任务中心、日志和设置，以及支撑这些页面的本地 API 与数据库。
 
 订单、采购、广告、自动库存/价格同步、完整 AI 选品、淘宝、拼多多和复杂 Agent 不属于当前实现范围。详见 [ROADMAP.md](./ROADMAP.md)。
 
@@ -29,7 +29,7 @@ Ozon Assistant 是一个面向单个 Ozon 店铺的 Windows 桌面工具，目�
 - UI：Tailwind CSS、可复用 React 组件、Lucide Icons
 - 本地 API：Python 3、FastAPI、Pydantic、SQLAlchemy
 - 数据库：SQLite；通过 Repository / Service 边界为 PostgreSQL 迁移预留空间
-- 异步工作：第一阶段使用进程内本地 Task Manager，不引入 Redis/Celery
+- 任务追踪：第一阶段在请求内执行快速 Mock 流程，并把任务状态持久化到 SQLite；真实耗时 Provider 接入前再引入后台执行器
 - 测试：前端类型检查与构建、Python 单元测试和 API 测试、关键业务流程测试
 
 ## 项目结构
@@ -46,8 +46,7 @@ Ozon Assistant/
 |   |   |-- models/           # 持久化模型
 |   |   |-- schemas/          # Pydantic 输入/输出模型
 |   |   |-- repositories/     # 数据访问边界
-|   |   |-- services/         # 应用服务与流程编排
-|   |   |-- tasks/            # 本地 Task Manager
+|   |   |-- services/         # 应用服务、流程编排和 TaskService
 |   |   |-- pricing/          # 确定性价格与利润计算
 |   |   `-- integrations/     # 1688、AI、Ozon Provider / Connector
 |   |-- tests/                # 后端及关键链路测试
@@ -56,7 +55,7 @@ Ozon Assistant/
 `-- ROADMAP.md
 ```
 
-实际目录会随 V1 实现逐步落地；模块边界和依赖规则见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+模块边界和依赖规则见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## Windows 开发环境
 
@@ -89,7 +88,8 @@ if (-not (Test-Path -LiteralPath ".env")) {
 当前 `apps/desktop/package.json` 已定义以下脚本：
 
 ```powershell
-Set-Location "D:\Copilot\Ozon Assistant\apps\desktop"
+# 从仓库根目录运行
+Set-Location .\apps\desktop
 npm ci
 npm run dev
 ```
@@ -97,27 +97,26 @@ npm run dev
 这会启动 Vite 前端。启动完整 Tauri 桌面窗口：
 
 ```powershell
-Set-Location "D:\Copilot\Ozon Assistant\apps\desktop"
+Set-Location .\apps\desktop
 npm run tauri dev
 ```
 
-前端生产构建与 Tauri 安装包构建：
+前端生产构建与 Tauri Rust 检查：
 
 ```powershell
-Set-Location "D:\Copilot\Ozon Assistant\apps\desktop"
+Set-Location .\apps\desktop
 npm run build
-npm run tauri build
+cargo check --manifest-path .\src-tauri\Cargo.toml
 ```
 
-这些命令来自当前脚本配置；在 V1 集成完成前，完整桌面构建仍可能依赖随后加入的环境配置和后端打包方案。
+本轮暂不交付正式安装包。开发时可使用根目录的 `scripts/dev.ps1` 一次启动桌面界面和 Python API；需要独立分发时，再把 Python API 打包为 Tauri sidecar 并生成安装包。
 
 ## 本地后端开发
 
 从仓库根目录创建虚拟环境并安装开发依赖：
 
 ```powershell
-Set-Location "D:\Copilot\Ozon Assistant"
-py -3.11 -m venv backend\.venv
+py -3 -m venv backend\.venv
 .\backend\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\backend\.venv\Scripts\python.exe -m pip install -e "backend[dev]"
 if (-not (Test-Path -LiteralPath ".env")) {
@@ -128,7 +127,7 @@ if (-not (Test-Path -LiteralPath ".env")) {
 启动 FastAPI 开发服务：
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8001 --reload
 ```
 
 运行后端测试：
@@ -139,16 +138,59 @@ if (-not (Test-Path -LiteralPath ".env")) {
 
 后端入口为 `app.main:app`，API 前缀为 `/api/v1`。从仓库根目录运行上述命令时，配置系统读取根目录 `.env`；从 `backend` 目录运行时则读取 `backend/.env`。
 
-桌面端通过环境变量 `VITE_API_URL` 指向本地 API；当前默认示例为 `http://127.0.0.1:8000/api/v1`。后端设置使用 `OZON_ASSISTANT_` 前缀。本地服务只应绑定回环地址，除非用户明确配置局域网访问。
+桌面端通过环境变量 `VITE_API_URL` 指向本地 API；默认地址为 `http://127.0.0.1:8001/api/v1`。`8000` 已被本机其他项目占用，因此 Ozon Assistant 固定使用 `8001`。后端设置使用 `OZON_ASSISTANT_` 前缀。本地服务只应绑定回环地址，除非用户明确配置局域网访问。
 
-数据库 Migration 采用 Alembic；在 `backend/alembic.ini` 和首个版本文件落地并完成验证后，README 会补充正式升级命令。
+数据库 Migration 采用 Alembic。应用启动时会自动应用已提交的版本，也可以手动执行：
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head
+.\backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini check
+```
+
+## 一键开发与验证
+
+完成首次依赖安装：
+
+```powershell
+.\scripts\bootstrap.ps1
+```
+
+同时启动 FastAPI 与 Tauri 桌面端：
+
+```powershell
+.\scripts\dev.ps1
+```
+
+仅以浏览器模式调试 React 界面：
+
+```powershell
+.\scripts\dev.ps1 -Web
+```
+
+运行后端测试、前端类型检查/构建和 Rust 检查：
+
+```powershell
+.\scripts\test.ps1
+```
+
+## V1 验收记录
+
+2026-10-02 已在当前 Windows 环境完成第一轮验收：
+
+- 后端单元、API、安全和完整业务链路测试：`43 passed`。
+- TypeScript 严格类型检查、Vite 生产构建和 Rust `cargo check` 通过。
+- 使用全新 SQLite 数据库完成 Migration，并实际跑通 `1688 URL -> Mock 采集 -> Mock AI -> 定价 -> 草稿编辑 -> 人工确认 -> Mock 发布`。
+- 使用真实浏览器检查桌面、390px 窄屏、浅色/深色主题；控制台无错误或警告。
+- Tauri Rust 桌面壳编译检查通过；本轮按要求不交付正式安装包。
+
+开发使用 `scripts/dev.ps1` 可一次启动桌面界面和本地 Python API。
 
 ## 开发约束
 
 - 原始 1688 数据、AI 加工结果、Ozon 最终草稿分别保存，AI 结果不能覆盖原始商品。
 - 业务服务依赖 Provider / Connector 接口，不直接依赖 Playwright、具体 LLM SDK 或零散 HTTP 请求。
 - 数字由 `PricingEngine` 和规则代码计算；LLM 只负责理解、翻译、解释和策略建议。
-- 所有耗时操作进入 Task Center，桌面 UI 不应被采集、AI、图片处理或同步任务阻塞。
+- V1 Mock 流程会创建并持久化 Task Center 记录。接入真实采集、AI、图片处理或同步 Provider 前，必须把这些耗时操作迁移到后台执行器，避免长请求占用 API 工作线程。
 - 发布、批量改价、库存修改、采购和退款等操作必须保留人工确认边界。
 - 日志必须脱敏，严禁记录完整 API Key、Token 或密码。
 

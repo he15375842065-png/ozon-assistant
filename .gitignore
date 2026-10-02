@@ -37,6 +37,9 @@ coverage/
 # Rust / Tauri
 target/
 **/src-tauri/target/
+# Desktop-only V1: `tauri icon` also generates mobile icon sets.
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/
 
 # Local runtime data
 data/
@@ -48,6 +51,8 @@ logs/
 *.log
 tmp/
 temp/
+output/
+.playwright-cli/
 
 # IDE and OS metadata
 .idea/

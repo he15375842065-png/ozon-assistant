@@ -14,7 +14,7 @@ flowchart LR
     API --> SVC[Application Services]
     SVC --> REPO[Repository Interfaces]
     REPO --> DB[(SQLite)]
-    SVC --> TASK[Local Task Manager]
+    SVC --> TASK[Persisted Task Lifecycle]
     SVC --> SOURCE[ProductSourceAdapter]
     SVC --> AI[AIGateway]
     SVC --> PRICE[PricingEngine]
@@ -63,9 +63,9 @@ V1 使用 Mock 实现跑通业务链路。替换为真实实现时，不改变�
 
 ### Task Manager
 
-`backend/app/tasks` 管理耗时操作，任务状态至少包括 `Pending`、`Running`、`Success`、`Failed` 和 `Cancelled`，并记录进度、开始/结束时间、错误和重试次数。
+V1 通过 `TaskService` 和数据库记录操作生命周期。任务状态包括 `Pending`、`Running`、`Success`、`Failed` 和 `Cancelled`，并记录进度、开始/结束时间、错误和重试次数。
 
-V1 使用进程内执行器和数据库任务记录。任务处理器调用 Service；UI 通过 API 查询状态。以后可以在保持任务接口和状态模型的前提下切换 Redis + Celery / Dramatiq。
+当前 Mock Provider 运行时间很短，由 API 请求内的 Service 同步执行，同时更新任务记录；UI 通过 API 查询历史状态。它不是后台队列。接入真实采集、AI、图片处理或同步 Provider 前，需要增加进程内后台执行器或切换 Redis + Celery / Dramatiq，并保持现有任务接口和状态模型。
 
 ## 4. 核心数据模型
 
@@ -86,7 +86,7 @@ sequenceDiagram
     actor User as 用户
     participant UI as Desktop UI
     participant API as FastAPI
-    participant Task as Task Manager
+    participant Task as Task Records
     participant Source as 1688 Adapter
     participant AI as AI Gateway
     participant Price as Pricing Engine
@@ -95,16 +95,20 @@ sequenceDiagram
 
     User->>UI: 输入 1688 URL
     UI->>API: 创建采集任务
-    API->>Task: enqueue(import_product)
-    Task->>Source: fetch + normalize
-    Source-->>Task: NormalizedProduct
-    Task->>Repo: 保存 SourceProduct / Variant
-    Task->>AI: 结构化商品加工
-    AI-->>Task: AIProductResult
-    Task->>Repo: 单独保存 AI 结果
-    Task->>Price: 计算价格和利润
-    Price-->>Task: PricingResult
-    Task->>Repo: 创建 OzonDraft
+    API->>Task: 创建并启动任务记录
+    API->>Source: fetch + normalize
+    Source-->>API: NormalizedProduct
+    API->>Repo: 保存 SourceProduct / Variant
+    API->>Task: 更新采集进度并完成
+    UI->>API: 发起 AI 加工
+    API->>Task: 创建并启动任务记录
+    API->>AI: 结构化商品加工
+    AI-->>API: AIProductResult
+    API->>Repo: 单独保存 AI 结果
+    API->>Price: 计算价格和利润
+    Price-->>API: PricingResult
+    API->>Repo: 创建 OzonDraft
+    API->>Task: 更新加工进度并完成
     UI->>API: 读取并编辑草稿
     User->>UI: 明确确认发布
     UI->>API: 发布已审核草稿
@@ -152,9 +156,9 @@ Tauri 提供 Windows 桌面壳和 Web UI；FastAPI 承载 Python 数据处理与
 
 V1 使用 SQLite 降低本地部署复杂度。Repository 隔离数据库细节，SQLAlchemy 和 Migration 保证模型演进，为 PostgreSQL 迁移保留路径。
 
-### ADR-003：先使用本地 Task Manager
+### ADR-003：先稳定任务生命周期，再引入后台队列
 
-单用户 MVP 不引入 Redis/Celery。任务接口和持久化状态先稳定，达到服务器化需求时再替换执行后端。
+单用户 Mock MVP 不引入 Redis/Celery。V1 先稳定任务接口和持久化状态；真实 Provider 带来耗时或并发需求时，再增加可替换的后台执行器。
 
 ### ADR-004：Provider / Connector 可替换
 

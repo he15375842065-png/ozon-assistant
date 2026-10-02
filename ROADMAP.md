@@ -6,24 +6,24 @@ Roadmap 按可交付的纵向能力划分。每个版本都需要保持原始商
 
 目标：在 Windows 本地完整跑通 `1688 URL -> AI -> Ozon Draft -> 人工审核 -> Mock 发布`。
 
-- [ ] 检查 Windows 开发环境并初始化工程
-- [ ] Tauri 2 + React + TypeScript 桌面壳
-- [ ] 现代后台 UI、左右布局、浅色/深色主题和状态组件
-- [ ] FastAPI + Pydantic + SQLAlchemy + SQLite
-- [ ] Migration、Repository 和 Service 基础层
-- [ ] `SourceProduct`、`Product`、`Variant`、`AIResult`、`OzonDraft`、`Task` 数据模型
-- [ ] `ProductSourceAdapter` 与 `Mock1688Provider`
-- [ ] `AIGateway` 与 `MockAIProvider`，使用结构化输出
-- [ ] `OzonConnector` 与 `MockOzonConnector`
-- [ ] 确定性的 `PricingEngine`
-- [ ] 商品采集、商品库、详情/AI 加工、草稿审核页面
-- [ ] 工作台、任务中心、日志和设置页面
-- [ ] 搜索、筛选、分页、编辑、删除和批量选择的基础能力
-- [ ] 发布前人工确认和敏感日志脱敏
-- [ ] 单元测试、API 测试和关键业务流程测试
-- [ ] Windows 前后端启动、构建和 Mock 流程验收
+- [x] 检查 Windows 开发环境并初始化工程
+- [x] Tauri 2 + React + TypeScript 桌面壳
+- [x] 现代后台 UI、左右布局、浅色/深色主题和状态组件
+- [x] FastAPI + Pydantic + SQLAlchemy + SQLite
+- [x] Migration、Repository 和 Service 基础层
+- [x] `SourceProduct`、`Product`、`Variant`、`AIResult`、`OzonDraft`、`Task` 数据模型
+- [x] `ProductSourceAdapter` 与 `Mock1688Provider`
+- [x] `AIGateway` 与 `MockAIProvider`，使用结构化输出
+- [x] `OzonConnector` 与 `MockOzonConnector`
+- [x] 确定性的 `PricingEngine`
+- [x] 商品采集、商品库、详情/AI 加工、草稿审核页面
+- [x] 工作台、任务中心、日志和设置页面
+- [x] 搜索、筛选、分页、编辑、删除和批量选择的基础能力
+- [x] 发布前人工确认和敏感日志脱敏
+- [x] 单元测试、API 测试和关键业务流程测试
+- [x] Windows 前后端启动、构建和 Mock 流程验收
 
-V1 验收条件：输入一个合法格式的 1688 URL 后，系统能创建任务、保存标准化商品与 SKU、生成独立 AI 结果、计算价格利润、创建可编辑草稿，并在人工确认后产生 Mock 发布结果。UI 保持响应，失败任务提供可理解的错误且可以重试。
+V1 验收条件：输入一个合法格式的 1688 URL 后，系统能创建任务、保存标准化商品与 SKU、生成独立 AI 结果、计算价格利润、创建可编辑草稿，并在人工确认后产生 Mock 发布结果。UI 保持响应，失败任务提供可理解的错误。后台执行与通用任务重试将在接入真实耗时 Provider 前完成。
 
 ## V2：真实数据与发布集成
 
