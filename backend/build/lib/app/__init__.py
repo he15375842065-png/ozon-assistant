@@ -1,0 +1,2 @@
+"""Ozon Assistant backend application."""
+

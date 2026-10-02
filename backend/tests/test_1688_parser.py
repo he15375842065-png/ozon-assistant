@@ -221,3 +221,18 @@ def test_unknown_suggestion_section_inside_offer_is_not_product_data() -> None:
     })
     with pytest.raises(IntegrationError, match="未保存商品"):
         parse_1688_snapshot(observation, URL)
+
+
+def test_missing_title_error_reports_observed_page() -> None:
+    data = {
+        "offerId": OFFER_ID,
+        "images": ["//cbu01.alicdn.com/img/ibank/fixture-socks.jpg"],
+        "skuInfos": [{"skuId": "sku-1", "price": "8.50", "amountOnSale": "25"}],
+    }
+    observation = snapshot(data)
+    observation["title"] = "1688"
+    with pytest.raises(IntegrationError) as exc_info:
+        parse_1688_snapshot(observation, URL)
+    message = str(exc_info.value)
+    assert "未读取到真实 1688 商品标题" in message
+    assert "页面标题为「1688」" in message
