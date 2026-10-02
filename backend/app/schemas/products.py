@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
@@ -11,6 +11,24 @@ class CollectProductRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     url: HttpUrl
+    mode: Literal["real", "mock"] = "real"
+
+    @field_validator("url")
+    @classmethod
+    def validate_source_url(cls, value: HttpUrl) -> HttpUrl:
+        from app.core.errors import ValidationError
+        from app.integrations.sources.browser_1688 import validate_offer_url
+
+        try:
+            return HttpUrl(validate_offer_url(str(value)))
+        except ValidationError as exc:
+            raise ValueError(str(exc)) from exc
+
+
+class OpenSourceBrowserRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: HttpUrl | None = None
 
 
 class VariantRead(ORMModel):
@@ -52,6 +70,8 @@ class ProductRead(BaseModel):
     id: int
     source_product_id: str
     source: str
+    data_kind: Literal["mock", "real"]
+    data_provider: str
     source_url: str
     title_original: str
     description_original: str
@@ -150,4 +170,5 @@ class WorkflowResponse(BaseModel):
     task_id: int
     draft_id: int | None = None
     message: str
+    collection_mode: Literal["real", "mock"]
 

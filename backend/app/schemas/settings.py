@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class SettingsRead(BaseModel):
     source_provider: str
+    source_browser_profile: str
+    source_browser_timeout_ms: int
     ai_provider: str
     ai_model: str
     ai_temperature: float
@@ -25,7 +27,7 @@ class SettingsRead(BaseModel):
 class SettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    source_provider: Literal["mock"] | None = None
+    source_provider: Literal["browser", "mock"] | None = None
     ai_provider: Literal["mock"] | None = None
     ai_model: str | None = Field(default=None, min_length=1, max_length=120)
     ai_temperature: float | None = Field(default=None, ge=0, le=2)

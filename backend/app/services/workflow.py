@@ -1,12 +1,13 @@
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
-from app.core.errors import ConflictError, ValidationError
+from app.core.errors import ConflictError, IntegrationError, ValidationError
 from app.core.security import sanitize_for_log
 from app.database.base import utc_now
 from app.integrations.ai import AIGateway
-from app.integrations.ozon import OzonAttributeMapper, OzonCategoryMapper, OzonConnector
+from app.integrations.ozon import MockOzonConnector, OzonAttributeMapper, OzonCategoryMapper, OzonConnector
 from app.integrations.sources import ProductSourceAdapter
+from app.integrations.sources.provenance import source_data_kind, source_data_provider
 from app.models import AIResult, OzonDraft, Product
 from app.pricing import PricingEngine, PricingInput
 from app.repositories.drafts import DraftRepository
@@ -26,6 +27,7 @@ class ProductWorkflowService:
         tasks: TaskRepository,
         logs: LogRepository,
         source_adapter: ProductSourceAdapter,
+        collection_mode: Literal["real", "mock"],
         ai_gateway: AIGateway,
         category_mapper: OzonCategoryMapper,
         attribute_mapper: OzonAttributeMapper,
@@ -38,6 +40,7 @@ class ProductWorkflowService:
         self.task_service = TaskService(tasks)
         self.logs = logs
         self.source_adapter = source_adapter
+        self.collection_mode = collection_mode
         self.ai_gateway = ai_gateway
         self.category_mapper = category_mapper
         self.attribute_mapper = attribute_mapper
@@ -46,26 +49,29 @@ class ProductWorkflowService:
         self.ozon_connector = ozon_connector
 
     def collect(self, url: str) -> tuple[Product, int]:
-        task = self.task_service.create("collect_product", {"url": url, "source": "1688"})
+        mode_context = {"collection_mode": self.collection_mode, "mock": self.collection_mode == "mock"}
+        task = self.task_service.create("collect_product", {"url": url, "source": "1688", **mode_context})
         self.task_service.start(task, progress=10)
         try:
             normalized = self.source_adapter.collect(url)
+            if source_data_kind(normalized.source, normalized.raw_payload) != self.collection_mode:
+                raise IntegrationError("采集数据来源与所选模式不一致，未保存商品")
             self.task_service.set_progress(task, 60)
             product = self.products.save_collected(normalized)
             self.task_service.succeed(
                 task,
-                {"product_id": product.id, "source_product_id": normalized.source_product_id},
+                {"product_id": product.id, "source_product_id": normalized.source_product_id, **mode_context},
             )
             self.logs.add(
                 "INFO",
                 "1688",
-                "商品采集成功",
-                {"product_id": product.id, "source_product_id": normalized.source_product_id},
+                "模拟商品采集成功" if self.collection_mode == "mock" else "真实商品采集成功",
+                {"product_id": product.id, "source_product_id": normalized.source_product_id, **mode_context},
             )
             return product, task.id
         except Exception as exc:
             self.task_service.fail(task, exc)
-            self.logs.add("ERROR", "1688", "商品采集失败", {"error": str(exc), "url": url})
+            self.logs.add("ERROR", "1688", "商品采集失败", {"error": str(exc), "url": url, **mode_context})
             raise
 
     def process(self, product_id: int) -> tuple[Product, OzonDraft, int]:
@@ -73,12 +79,16 @@ class ProductWorkflowService:
         has_published_draft = any(
             draft.status == "published" for draft in product.drafts
         )
-        task = self.task_service.create("process_product", {"product_id": product_id})
+        data_kind = source_data_kind(product.source_product.source, product.source_product.raw_payload)
+        processing_context = {"data_kind": data_kind, "mock": self.ai_gateway.provider.name == "mock"}
+        task = self.task_service.create("process_product", {"product_id": product_id, **processing_context})
         self.task_service.start(task, progress=5)
         self.products.save_status(product, ai_status="processing")
         ai_input = self._ai_input(product)
         try:
             try:
+                if data_kind == "real" and self.ai_gateway.provider.name == "mock":
+                    raise ConflictError("真实商品不能使用模拟 AI 加工。请先接入真实 AI 服务；商品原始数据已保留，未生成虚拟俄语内容或草稿。")
                 generation = self.ai_gateway.process_product(ai_input)
             except Exception as exc:
                 self.products.add_ai_result(
@@ -178,20 +188,20 @@ class ProductWorkflowService:
             )
             self.task_service.succeed(
                 task,
-                {"product_id": product.id, "ai_result_id": ai_result.id, "draft_id": draft.id},
+                {"product_id": product.id, "ai_result_id": ai_result.id, "draft_id": draft.id, **processing_context},
             )
             self.logs.add(
                 "INFO",
                 "AI",
                 "AI 商品加工及 Ozon 草稿生成成功",
-                {"product_id": product.id, "ai_result_id": ai_result.id, "draft_id": draft.id},
+                {"product_id": product.id, "ai_result_id": ai_result.id, "draft_id": draft.id, **processing_context},
             )
             return self.products.get(product.id), draft, task.id
         except Exception as exc:
             self.products.save_status(product, ai_status="failed")
             self.task_service.fail(task, exc)
             self.logs.add(
-                "ERROR", "AI", "AI 商品加工失败", {"product_id": product.id, "error": str(exc)}
+                "ERROR", "AI", "AI 商品加工失败", {"product_id": product.id, "error": str(exc), **processing_context}
             )
             raise
 
@@ -214,12 +224,17 @@ class ProductWorkflowService:
         if not confirmed:
             raise ConflictError("发布前必须由用户明确确认")
         draft = self.drafts.get(draft_id)
+        if (
+            source_data_kind(draft.product.source_product.source, draft.product.source_product.raw_payload) == "real"
+            and isinstance(self.ozon_connector, MockOzonConnector)
+        ):
+            raise ConflictError("真实商品不能通过模拟接口发布。请先接入真实 Ozon API；没有向 Ozon 提交商品。")
         if draft.status == "published":
             raise ConflictError("该草稿已发布")
         if draft.status == "stale":
             raise ConflictError("源商品已发生变化，请重新进行 AI 加工后再发布草稿")
         self._validate_publishable_draft(draft)
-        task = self.task_service.create("publish_ozon", {"draft_id": draft.id, "mock": True})
+        task = self.task_service.create("publish_ozon", {"draft_id": draft.id, "mock": True, "data_kind": "mock"})
         self.task_service.start(task, progress=10)
         try:
             payload = {
@@ -241,19 +256,19 @@ class ProductWorkflowService:
             self.products.save_status(draft.product, ozon_status="published")
             self.task_service.succeed(
                 task,
-                {"draft_id": draft.id, "publication_id": result.publication_id, "mock": True},
+                {"draft_id": draft.id, "publication_id": result.publication_id, "mock": True, "data_kind": "mock"},
             )
             self.logs.add(
                 "INFO",
                 "Ozon",
                 "Mock Ozon 发布成功",
-                {"draft_id": draft.id, "publication_id": result.publication_id},
+                {"draft_id": draft.id, "publication_id": result.publication_id, "mock": True, "data_kind": "mock"},
             )
             return draft, task.id
         except Exception as exc:
             self.task_service.fail(task, exc)
             self.logs.add(
-                "ERROR", "Ozon", "Ozon 发布失败", {"draft_id": draft.id, "error": str(exc)}
+                "ERROR", "Ozon", "Ozon 发布失败", {"draft_id": draft.id, "error": str(exc), "mock": True, "data_kind": "mock"}
             )
             raise
 
@@ -285,6 +300,8 @@ class ProductWorkflowService:
     def _ai_input(product: Product) -> dict[str, Any]:
         return {
             "product_id": product.id,
+            "data_kind": source_data_kind(product.source_product.source, product.source_product.raw_payload),
+            "data_provider": source_data_provider(product.source_product.source, product.source_product.raw_payload),
             "title_original": product.title_original,
             "description_original": product.description_original,
             "category_original": product.category_original,

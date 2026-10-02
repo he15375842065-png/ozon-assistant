@@ -55,7 +55,9 @@ flowchart LR
 - `AIGateway` 统一模型调用，Provider 输出经过 Pydantic / JSON Schema 验证。
 - `OzonConnector` 集中认证、HTTP、重试、限流、错误映射和脱敏日志。
 
-V1 使用 Mock 实现跑通业务链路。替换为真实实现时，不改变上层 Service 的流程接口。
+V1 使用 Mock 实现跑通业务链路。当前采集页默认选择 `Browser1688Provider`：专用 Playwright 工作线程管理独立本地浏览器会话，读取实际页面快照及页面自然发起的商品 JSON 响应；纯解析器 `alibaba1688_parser.py` 不执行网络或 JavaScript。登录与验证交给用户，失败不返回样例。AI 与 Ozon 真实实现尚未接入，真实来源会阻止进入 Mock AI。
+
+采集请求默认 `mode=real`，只有测试显式指定 `mode=mock` 才会调用样例。商品响应带 `data_kind`、`data_provider`；新样例来源为 `mock_1688`。真实保存遇到旧 `1688` 固定样例时保留并迁移样例的来源命名空间，再创建真实记录，避免互相覆盖。浏览器快照和完整网络响应仅存在于内存，数据库只保存解析后的商品资料，不保存页面脚本、Cookie 或登录 Token。
 
 ### Pricing
 
@@ -65,7 +67,7 @@ V1 使用 Mock 实现跑通业务链路。替换为真实实现时，不改变�
 
 V1 通过 `TaskService` 和数据库记录操作生命周期。任务状态包括 `Pending`、`Running`、`Success`、`Failed` 和 `Cancelled`，并记录进度、开始/结束时间、错误和重试次数。
 
-当前 Mock Provider 运行时间很短，由 API 请求内的 Service 同步执行，同时更新任务记录；UI 通过 API 查询历史状态。它不是后台队列。接入真实采集、AI、图片处理或同步 Provider 前，需要增加进程内后台执行器或切换 Redis + Celery / Dramatiq，并保持现有任务接口和状态模型。
+Mock Provider 在 API 请求内同步执行。Browser Provider 把浏览器操作提交到单线程执行器，保证 Playwright 对象只在创建它的线程使用；同步 API 路由等待有时限的结果，前端异步请求保持响应。该执行器仍不是可恢复后台队列，需要后续实现统一调度、取消和重试。
 
 ## 4. 核心数据模型
 
@@ -140,7 +142,7 @@ Task 失败应保存可展示的安全错误信息和内部诊断上下文；失
 ## 8. 配置与安全边界
 
 - 配置从环境变量 / `.env` 注入，`.env` 不提交 Git。
-- 默认使用 Mock Provider，真实 Provider 必须显式选择并提供凭证。
+- 来源默认真实浏览器；历史演示需显式选择 Mock。真实 AI 和 Ozon 接入前阻止模拟数据冒充真实结果。
 - 本地 API 默认绑定 `127.0.0.1`。
 - 数据库不保存不必要的明文认证信息；需要长期保存的桌面凭证以后应接入系统安全存储。
 - 发布、批量改价、库存修改、采购和退款需要独立权限/确认检查。

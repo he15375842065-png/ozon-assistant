@@ -165,16 +165,16 @@ export function AppShell({ activePage, activeLabel, onNavigate, theme, onToggleT
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{activeLabel}</p>
-              <p className="hidden truncate text-[11px] text-slate-400 sm:block">Ozon 店铺 · 俄罗斯站</p>
+              <p className="hidden truncate text-[11px] text-slate-400 sm:block">本地商品工作空间</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <div title="当前仅执行本地模拟流程，不连接真实 Ozon 店铺" className="mr-1 hidden items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-bold text-violet-700 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300 sm:flex">
-              MOCK 模式
+            <div title="商品采集读取真实网页；真实 AI 服务与 Ozon API 尚未接入" className="mr-1 hidden items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-bold text-violet-700 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300 sm:flex">
+              真实采集 · AI / Ozon 未接入
             </div>
             <div title={API_URL} className="mr-2 hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 md:flex">
               <span className={cn("h-1.5 w-1.5 rounded-full", apiOnline === true ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.12)]" : apiOnline === false ? "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,.12)]" : "animate-pulse bg-slate-400")} />
-              {apiOnline === true ? "本地服务正常" : apiOnline === false ? "预览模式" : "正在连接"}
+              {apiOnline === true ? "本地服务正常" : apiOnline === false ? "服务未连接" : "正在连接"}
             </div>
             <Button variant="ghost" size="icon" onClick={onToggleTheme} aria-label={theme === "dark" ? "切换浅色主题" : "切换深色主题"} title={theme === "dark" ? "切换浅色主题" : "切换深色主题"}>
               {theme === "dark" ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}

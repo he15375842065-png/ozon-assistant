@@ -2,7 +2,7 @@
 
 Ozon Assistant 是一个面向单个 Ozon 店铺的 Windows 桌面工具，目标是把国内货源发现、商品加工、定价、Ozon 草稿审核和后续运营集中到一个本地应用中。
 
-当前开发重点是跑通第一条可演示、可测试的纵向链路：
+当前开始接入真实 1688 网页采集。已有的下列完整演示链路仅用于自动测试：
 
 ```text
 1688 商品 URL
@@ -15,11 +15,25 @@ Ozon Assistant 是一个面向单个 Ozon 店铺的 Windows 桌面工具，目�
   -> Mock 发布
 ```
 
-第一阶段默认使用 `Mock1688Provider`、`MockAIProvider` 和 `MockOzonConnector`。Mock 模式不会访问真实 1688、AI 或 Ozon 服务，也不会发布真实商品。真实 Ozon 发布必须经过明确的人工确认。
+商品采集页默认请求 `Browser1688Provider`，读取指定商品页，不回退模拟商品。`MockAIProvider` 和 `MockOzonConnector` 仍仅用于历史样例的测试；真实商品目前会阻止 Mock AI 加工，避免被固定收纳盒内容改写。真实 AI、Ozon 类目和发布接口仍待接入，不能把本地演示成功当作真实发布。
 
 ## 当前阶段
 
-仓库已完成 V1 Mock MVP 的第一轮纵向链路。当前覆盖工作台、商品采集、商品库、AI 加工、Ozon 草稿审核、任务中心、日志和设置，以及支撑这些页面的本地 API 与数据库。
+仓库已完成 V1 Mock MVP 的第一轮纵向链路，并新增真实浏览器采集代码、手动登录入口、来源标记和防止模拟数据覆盖真实商品的保护。真实 1688 页面端到端验收尚未完成：本轮自动浏览器访问被站点安全策略拒绝，仅完成合成页面数据与 API 测试。
+
+### 测试真实采集
+
+打开 `http://127.0.0.1:1420` 的商品采集页，输入完整 `https://detail.1688.com/offer/数字.html` 链接。点击“打开 1688 登录浏览器”，在专用 Microsoft Edge 窗口中手动登录或处理站点验证，随后返回软件点击“开始采集”。采集器只读取页面已经提供的数据，不代填登录凭据，不自动解决验证，不调用猜测的隐藏接口。
+
+当前解析器保守支持页面内 JSON 状态和观察到的商品 JSON 响应。商品 ID、标题、图片以及每个 SKU 的明确价格、库存必须通过验证才能保存。页面格式不支持、需要登录、验证、商品下架或必需数据缺失时明确失败；缺失库存不会假定为零或随机生成。专用浏览器数据保存在 `data/1688-browser-profile`，与日常浏览器隔离，不进入 Git。
+
+采集浏览器优先使用本机 Microsoft Edge。没有 Edge 时，可安装 Playwright Chromium：
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m playwright install chromium
+```
+
+历史模拟商品保留，并显示“模拟样例 · 非真实商品”；同一链接的真实采集保存为独立来源记录。真实 AI 与 Ozon API 接入前，仅验收真实采集和商品库，不能用模拟加工补齐后续流程。
 
 订单、采购、广告、自动库存/价格同步、完整 AI 选品、淘宝、拼多多和复杂 Agent 不属于当前实现范围。详见 [ROADMAP.md](./ROADMAP.md)。
 
@@ -29,7 +43,7 @@ Ozon Assistant 是一个面向单个 Ozon 店铺的 Windows 桌面工具，目�
 - UI：Tailwind CSS、可复用 React 组件、Lucide Icons
 - 本地 API：Python 3、FastAPI、Pydantic、SQLAlchemy
 - 数据库：SQLite；通过 Repository / Service 边界为 PostgreSQL 迁移预留空间
-- 任务追踪：第一阶段在请求内执行快速 Mock 流程，并把任务状态持久化到 SQLite；真实耗时 Provider 接入前再引入后台执行器
+- 任务追踪：流程状态持久化到 SQLite；浏览器操作在独立串行工作线程运行，API 请求等待有时限的结果，UI 异步显示进度。通用后台队列、取消和重试仍待实现
 - 测试：前端类型检查与构建、Python 单元测试和 API 测试、关键业务流程测试
 
 ## 项目结构
@@ -81,7 +95,7 @@ if (-not (Test-Path -LiteralPath ".env")) {
 }
 ```
 
-`.env` 已被 Git 忽略。V1 的默认配置应保持三个集成均为 `mock`。不要把真实 API Key、Token、Client Secret 或密码提交到仓库；日志也不得输出完整凭证。
+`.env` 已被 Git 忽略。来源默认 `browser`；AI 与 Ozon 仍为 `mock`，真实商品会阻止模拟加工。不要把真实 API Key、Token、Client Secret 或密码提交到仓库；日志也不得输出完整凭证。
 
 ## 桌面端开发
 
@@ -190,7 +204,7 @@ if (-not (Test-Path -LiteralPath ".env")) {
 - 原始 1688 数据、AI 加工结果、Ozon 最终草稿分别保存，AI 结果不能覆盖原始商品。
 - 业务服务依赖 Provider / Connector 接口，不直接依赖 Playwright、具体 LLM SDK 或零散 HTTP 请求。
 - 数字由 `PricingEngine` 和规则代码计算；LLM 只负责理解、翻译、解释和策略建议。
-- V1 Mock 流程会创建并持久化 Task Center 记录。接入真实采集、AI、图片处理或同步 Provider 前，必须把这些耗时操作迁移到后台执行器，避免长请求占用 API 工作线程。
+- 浏览器在独立线程串行操作以满足 Playwright 的线程边界；API 同步路由等待结果，前端异步请求。当前仍需完善可恢复后台任务、取消和重试。
 - 发布、批量改价、库存修改、采购和退款等操作必须保留人工确认边界。
 - 日志必须脱敏，严禁记录完整 API Key、Token 或密码。
 

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CircleDotDashed,
   Clock3,
+  ImageIcon,
   PackagePlus,
   Play,
   Rocket,
@@ -15,7 +16,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { api, errorMessage } from "../lib/api";
-import { demoDashboard } from "../lib/demo-data";
 import { formatMoney, formatPercent, relativeTime, statusLabel } from "../lib/format";
 import type { DashboardData, Product } from "../lib/types";
 import type { PageId } from "../components/AppShell";
@@ -28,8 +28,8 @@ interface Props {
 
 const statCards = [
   { key: "product_total" as const, label: "商品总数", helper: "本地商品库", icon: Box, tone: "indigo" },
-  { key: "pending_ai" as const, label: "待 AI 加工", helper: "等待生成俄语资料", icon: Sparkles, tone: "violet" },
-  { key: "pending_review" as const, label: "待人工审核", helper: "Mock 发布前检查", icon: Clock3, tone: "amber" },
+  { key: "pending_ai" as const, label: "待 AI 加工", helper: "真实 AI 服务尚未接入", icon: Sparkles, tone: "violet" },
+  { key: "pending_review" as const, label: "模拟草稿待审核", helper: "历史样例的演示草稿", icon: Clock3, tone: "amber" },
   { key: "published" as const, label: "Mock 已发布", helper: "本地模拟结果", icon: CheckCircle2, tone: "emerald" },
 ];
 
@@ -51,8 +51,8 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
     try {
       setData(await api.dashboard());
     } catch (reason) {
-      setData(demoDashboard);
-      setError(`本地服务暂未连接，当前显示预览数据。${errorMessage(reason)}`);
+      setData(undefined);
+      setError(`工作台数据读取失败，请检查本地服务后重试。${errorMessage(reason)}`);
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
       <PageHeader
         eyebrow="Overview"
         title="早上好，开始今天的 Ozon 运营"
-        description="从 1688 采集到 Ozon 草稿与 Mock 发布，关键进度和待办都集中在这里。"
+        description="查看真实商品采集与本地任务记录。真实 AI 服务和 Ozon API 尚未接入，历史模拟样例会单独标记。"
         actions={<Button onClick={() => onNavigate("collect")}><PackagePlus className="h-4 w-4" />采集新商品</Button>}
       />
 
@@ -89,7 +89,7 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
               <div className="flex items-start">
                 <div className={cn("grid h-10 w-10 place-items-center rounded-xl", colors.icon)}><Icon className="h-[19px] w-[19px]" /></div>
               </div>
-              {loading ? <Skeleton className="mt-5 h-9 w-20" /> : <p className="mt-5 text-3xl font-bold tracking-tight text-slate-950 dark:text-white">{data?.[stat.key] ?? 0}</p>}
+              {loading ? <Skeleton className="mt-5 h-9 w-20" /> : <p className="mt-5 text-3xl font-bold tracking-tight text-slate-950 dark:text-white">{data ? data[stat.key] : "—"}</p>}
               <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{stat.label}</p>
               <p className="mt-0.5 text-xs text-slate-400">{stat.helper}</p>
             </Card>
@@ -101,8 +101,8 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">最近采集</h2>
-              <p className="mt-0.5 text-xs text-slate-400">最新进入商品库的 1688 商品</p>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">最近商品记录</h2>
+              <p className="mt-0.5 text-xs text-slate-400">真实采集和历史模拟样例均显示来源标记</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => onNavigate("products")}>查看全部<ArrowRight className="h-3.5 w-3.5" /></Button>
           </div>
@@ -111,13 +111,11 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
               <div className="px-5 py-12 text-center text-sm text-slate-400">还没有采集商品</div>
             ) : recentProducts.map((product) => (
               <button key={product.id} className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50" onClick={() => onOpenProduct(product)}>
-                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
-                  {product.images?.[0] ? <img src={product.images[0]} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center"><Box className="h-4 w-4 text-slate-400" /></div>}
-                </div>
+                <RecentProductImage product={product} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{product.title_original || product.title || `商品 #${product.id}`}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                    <span>1688</span><span>{formatMoney(product.purchase_price, product.currency)}</span><span>{product.sku_count ?? product.variants?.length ?? 0} SKU</span><span>{relativeTime(product.created_at)}</span>
+                    <Badge tone={product.data_kind === "mock" ? "amber" : product.data_kind === "real" ? "emerald" : "slate"}>{product.data_kind === "mock" ? "模拟样例 · 非真实商品" : product.data_kind === "real" ? "真实采集" : "数据来源待确认"}</Badge><span>{formatMoney(product.purchase_price, product.currency)}</span><span>{product.sku_count ?? product.variants?.length ?? 0} SKU</span><span>{relativeTime(product.created_at)}</span>
                   </div>
                 </div>
                 <Badge tone={product.ai_status === "completed" ? "emerald" : product.ai_status === "failed" ? "rose" : product.ai_status === "processing" ? "violet" : "slate"}>{statusLabel(product.ai_status)}</Badge>
@@ -132,12 +130,12 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
             <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-white/10" /><div className="absolute -bottom-20 right-16 h-36 w-36 rounded-full bg-violet-300/10" />
             <div className="relative flex items-start justify-between">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><Rocket className="h-5 w-5" /></span>
-              <Badge className="bg-white/15 text-white ring-white/20">纵向链路</Badge>
+              <Badge className="bg-white/15 text-white ring-white/20">开发进度</Badge>
             </div>
-            <h2 className="relative mt-5 text-lg font-bold">一条链路，完成 Mock 发布演示</h2>
-            <p className="relative mt-1 text-xs leading-5 text-indigo-100">采集商品后，AI 会准备俄语资料、类目属性和定价草稿，最终由你确认模拟发布；不会写入真实 Ozon 店铺。</p>
-            <div className="relative mt-5 flex items-center gap-1.5 text-[10px] font-semibold text-indigo-100">
-              {["1688", "AI", "定价", "审核", "Ozon"].map((step, index) => <span key={step} className="contents"><span className="rounded-md bg-white/10 px-2 py-1">{step}</span>{index < 4 && <ArrowRight className="h-3 w-3 opacity-60" />}</span>)}
+            <h2 className="relative mt-5 text-lg font-bold">真实商品采集正在完善</h2>
+            <p className="relative mt-1 text-xs leading-5 text-indigo-100">已新增独立的本地浏览器采集，1688 页面适配仍在完善。真实 AI 服务与 Ozon API 待接入；已保存的商品可以查看和编辑原始资料。</p>
+            <div className="relative mt-5 flex flex-wrap items-center gap-2 text-[10px] font-semibold text-indigo-100">
+              {["1688 网页采集", "AI 待接入", "Ozon 待接入"].map((step) => <span key={step} className="rounded-md bg-white/10 px-2 py-1">{step}</span>)}
             </div>
             <Button className="relative mt-5 bg-white text-indigo-700 hover:bg-indigo-50" size="sm" onClick={() => onNavigate("collect")}><Play className="h-3.5 w-3.5" />开始采集</Button>
           </Card>
@@ -167,10 +165,10 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
           </div>
           <div className="mt-4 space-y-2">
             <button onClick={() => onNavigate("ai")} className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-slate-800 dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10"><Bot className="h-4 w-4" /></span><div className="flex-1"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">批量处理待 AI 商品</p><p className="mt-0.5 text-[11px] text-slate-400">还有 {data?.pending_ai ?? 0} 个商品等待加工</p></div><ArrowRight className="h-4 w-4 text-slate-300" />
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10"><Bot className="h-4 w-4" /></span><div className="flex-1"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">查看 AI 加工状态</p><p className="mt-0.5 text-[11px] text-slate-400">真实 AI 尚未接入；历史样例支持模拟加工</p></div><ArrowRight className="h-4 w-4 text-slate-300" />
             </button>
             <button onClick={() => onNavigate("drafts")} className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-slate-800 dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10"><CheckCircle2 className="h-4 w-4" /></span><div className="flex-1"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">审核 Ozon 商品草稿</p><p className="mt-0.5 text-[11px] text-slate-400">Mock 发布前请确认标题、类目、属性与价格</p></div><ArrowRight className="h-4 w-4 text-slate-300" />
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10"><CheckCircle2 className="h-4 w-4" /></span><div className="flex-1"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">查看历史模拟草稿</p><p className="mt-0.5 text-[11px] text-slate-400">真实 Ozon API 尚未接入，发布记录为模拟结果</p></div><ArrowRight className="h-4 w-4 text-slate-300" />
             </button>
           </div>
         </Card>
@@ -189,4 +187,10 @@ export function DashboardPage({ onNavigate, onOpenProduct }: Props) {
       </div>
     </div>
   );
+}
+
+function RecentProductImage({ product }: { product: Product }) {
+  const source = product.images?.[0];
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  return <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">{source && failedSource !== source ? <img key={source} src={source} alt="" className="h-full w-full object-cover" onError={() => setFailedSource(source)} /> : <div className="grid h-full place-items-center" aria-label="暂无可显示的商品图片"><ImageIcon className="h-4 w-4 text-slate-400" /></div>}</div>;
 }

@@ -35,6 +35,8 @@ export interface AiResult {
 
 export interface Product {
   id: ID;
+  data_kind?: "mock" | "real";
+  data_provider?: string;
   source?: string;
   source_product_id?: string;
   source_url?: string;
@@ -118,8 +120,14 @@ export interface TaskItem {
 
 export interface WorkflowResponse {
   product: Product;
+  collection_mode?: "mock" | "real";
   task_id: ID;
   draft_id?: ID | null;
+  message: string;
+}
+
+export interface SourceBrowserStatus {
+  status: "closed" | "opened";
   message: string;
 }
 

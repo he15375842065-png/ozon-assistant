@@ -18,13 +18,16 @@ def test_complete_mock_vertical_flow(client: TestClient) -> None:
     initial = client.get(f"{API}/dashboard").json()
     assert initial["product_total"] == 0
 
-    collected_response = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL})
+    collected_response = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"})
     assert collected_response.status_code == 201, collected_response.text
     collected = collected_response.json()
     product = collected["product"]
     product_id = product["id"]
     assert collected["task_id"] > 0
-    assert product["source"] == "1688"
+    assert product["source"] == "mock_1688"
+    assert product["data_kind"] == "mock"
+    assert product["data_provider"] == "mock_1688"
+    assert collected["collection_mode"] == "mock"
     assert product["source_product_id"] == "123456789"
     assert product["ai_status"] == "pending"
     assert product["ozon_status"] == "not_created"
@@ -100,8 +103,8 @@ def test_complete_mock_vertical_flow(client: TestClient) -> None:
 
 
 def test_recollect_updates_in_place_and_product_filters_work(client: TestClient) -> None:
-    first = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()
-    second = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()
+    first = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()
+    second = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()
 
     assert first["product"]["id"] == second["product"]["id"]
     products = client.get(f"{API}/products?search=收纳&page=1&page_size=10").json()
@@ -115,11 +118,11 @@ def test_recollect_updates_in_place_and_product_filters_work(client: TestClient)
 
 def test_product_edit_delete_and_expected_errors(client: TestClient) -> None:
     invalid = client.post(
-        f"{API}/products/collect", json={"url": "https://example.com/item/1"}
+        f"{API}/products/collect", json={"url": "https://example.com/item/1", "mode": "mock"}
     )
     assert invalid.status_code == 422
 
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     product_id = product["id"]
@@ -192,7 +195,7 @@ def test_settings_reject_unimplemented_provider_modes(client: TestClient) -> Non
 
 
 def test_processing_uses_updated_runtime_pricing_settings(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     settings_update = client.patch(
@@ -222,7 +225,7 @@ def test_processing_uses_updated_runtime_pricing_settings(client: TestClient) ->
 
 
 def test_draft_price_and_stock_updates_remain_consistent(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     processed = client.post(f"{API}/products/{product['id']}/process").json()
@@ -262,7 +265,7 @@ def test_draft_price_and_stock_updates_remain_consistent(client: TestClient) -> 
 
 
 def test_draft_rejects_inconsistent_total_and_sku_stock(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -296,7 +299,7 @@ def test_draft_rejects_inconsistent_total_and_sku_stock(client: TestClient) -> N
 def test_patch_endpoints_reject_null_for_required_fields(
     client: TestClient, endpoint: str, payload: dict[str, object]
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -312,7 +315,7 @@ def test_patch_endpoints_reject_null_for_required_fields(
 
 
 def test_publish_rejects_incomplete_review_draft(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -343,7 +346,7 @@ def test_publish_rejects_incomplete_review_draft(client: TestClient) -> None:
 def test_patch_endpoints_reject_invalid_external_urls(
     client: TestClient, endpoint: str, payload: dict[str, object]
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -361,7 +364,7 @@ def test_patch_endpoints_reject_invalid_external_urls(
 @pytest.mark.parametrize(
     ("method", "path", "payload"),
     [
-        ("post", f"{API}/products/collect", {"url": PRODUCT_URL, "mode": "real"}),
+        ("post", f"{API}/products/collect", {"url": PRODUCT_URL, "unknown_field": True}),
         ("patch", f"{API}/settings", {"unknown_setting": True}),
     ],
 )
@@ -390,7 +393,7 @@ def test_draft_rejects_invalid_sku_updates(
     client: TestClient,
     mutate_skus: Callable[[list[dict[str, object]]], list[dict[str, object]]],
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -408,7 +411,7 @@ def test_draft_rejects_invalid_sku_updates(
 def test_sku_only_update_cannot_diverge_from_global_draft_price(
     client: TestClient,
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -430,7 +433,7 @@ def test_sku_only_update_cannot_diverge_from_global_draft_price(
 def test_unchanged_recollect_preserves_variant_identity_used_by_draft(
     client: TestClient,
 ) -> None:
-    first = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    first = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     initial_variant_ids = [variant["id"] for variant in first["variants"]]
@@ -442,10 +445,10 @@ def test_unchanged_recollect_preserves_variant_identity_used_by_draft(
     assert draft_variant_ids == initial_variant_ids
 
     other_url = "https://detail.1688.com/offer/987654321.html"
-    other = client.post(f"{API}/products/collect", json={"url": other_url})
+    other = client.post(f"{API}/products/collect", json={"url": other_url, "mode": "mock"})
     assert other.status_code == 201, other.text
 
-    recollected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL})
+    recollected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"})
     assert recollected.status_code == 201, recollected.text
     current_variant_ids = [
         variant["id"] for variant in recollected.json()["product"]["variants"]
@@ -459,7 +462,7 @@ def test_unchanged_recollect_preserves_variant_identity_used_by_draft(
 
 
 def test_published_draft_is_immutable(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -489,7 +492,7 @@ def test_published_draft_is_immutable(client: TestClient) -> None:
 def test_source_change_does_not_mutate_published_draft(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     draft_id = client.post(f"{API}/products/{product['id']}/process").json()["draft_id"]
@@ -505,7 +508,7 @@ def test_source_change_does_not_mutate_published_draft(
         return payload
 
     monkeypatch.setattr(Mock1688Provider, "fetch", changed_fetch)
-    recollected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL})
+    recollected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"})
     assert recollected.status_code == 201, recollected.text
     refreshed_product = recollected.json()["product"]
 
@@ -527,7 +530,7 @@ def test_source_change_does_not_mutate_published_draft(
 def test_reprocessing_published_product_keeps_published_and_review_visibility(
     client: TestClient,
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     published_draft_id = client.post(
@@ -567,11 +570,11 @@ def test_reprocessing_published_product_keeps_published_and_review_visibility(
 def test_recollect_only_invalidates_downstream_when_source_facts_change(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    collected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()
+    collected = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()
     product_id = collected["product"]["id"]
     draft_id = client.post(f"{API}/products/{product_id}/process").json()["draft_id"]
 
-    unchanged = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    unchanged = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
     assert unchanged["ai_status"] == "completed"
@@ -587,7 +590,7 @@ def test_recollect_only_invalidates_downstream_when_source_facts_change(
         return payload
 
     monkeypatch.setattr(Mock1688Provider, "fetch", reordered_fetch)
-    reordered = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL})
+    reordered = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"})
     assert reordered.status_code == 201, reordered.text
     assert reordered.json()["product"]["ai_status"] == "completed"
     assert reordered.json()["product"]["ozon_status"] == "review"
@@ -599,7 +602,7 @@ def test_recollect_only_invalidates_downstream_when_source_facts_change(
         return payload
 
     monkeypatch.setattr(Mock1688Provider, "fetch", changed_fetch)
-    changed = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL})
+    changed = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"})
     assert changed.status_code == 201, changed.text
     changed_product = changed.json()["product"]
 
@@ -625,7 +628,7 @@ def test_recollect_only_invalidates_downstream_when_source_facts_change(
 
 
 def test_product_stock_edit_keeps_variant_stock_in_sync(client: TestClient) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
 
@@ -648,7 +651,7 @@ def test_product_stock_edit_keeps_variant_stock_in_sync(client: TestClient) -> N
 def test_ai_failure_is_auditable_without_exposing_credentials(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL}).json()[
+    product = client.post(f"{API}/products/collect", json={"url": PRODUCT_URL, "mode": "mock"}).json()[
         "product"
     ]
 

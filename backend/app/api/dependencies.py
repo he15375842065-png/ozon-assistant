@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -45,13 +46,28 @@ def pricing_options_from_settings(settings: Settings) -> dict[str, Decimal]:
     }
 
 
-def build_workflow(session: Session, settings: Settings) -> ProductWorkflowService:
+def build_workflow(
+    session: Session,
+    settings: Settings,
+    *,
+    collection_mode: Literal["real", "mock"] | None = None,
+) -> ProductWorkflowService:
+    mode = collection_mode or ("mock" if settings.source_provider == "mock" else "real")
+    if mode == "mock":
+        source_provider = Mock1688Provider()
+    else:
+        from app.integrations.sources.browser_1688 import Browser1688Provider
+
+        source_provider = Browser1688Provider(
+            settings.source_browser_profile, settings.source_browser_timeout_ms
+        )
     return ProductWorkflowService(
         products=ProductRepository(session),
         drafts=DraftRepository(session),
         tasks=TaskRepository(session),
         logs=LogRepository(session),
-        source_adapter=Alibaba1688Adapter(Mock1688Provider()),
+        source_adapter=Alibaba1688Adapter(source_provider),
+        collection_mode=mode,
         ai_gateway=AIGateway(MockAIProvider(settings.ai_model)),
         category_mapper=OzonCategoryMapper(),
         attribute_mapper=OzonAttributeMapper(),

@@ -48,6 +48,9 @@ class Mock1688Provider(Alibaba1688DataProvider):
         image = "https://placehold.co/800x800/eef2ff/4f46e5?text=1688+Product"
         image_alt = "https://placehold.co/800x800/f8fafc/0f172a?text=Product+Detail"
         return {
+            "provider": "mock_1688",
+            "mock": True,
+            "source": "mock_1688",
             "offer_id": offer_id,
             "url": url,
             "title": "多功能家居收纳盒 桌面化妆品整理盒",
@@ -110,7 +113,7 @@ class Alibaba1688Adapter(ProductSourceAdapter):
             if not variants:
                 raise IntegrationError("1688 商品没有可用 SKU")
             return NormalizedProductData(
-                source="1688",
+                source="mock_1688" if raw.get("mock") is True else "1688",
                 source_product_id=str(raw["offer_id"]),
                 source_url=raw["url"],
                 title_original=str(raw["title"]),

@@ -9,6 +9,7 @@ from app.main import create_app
 @pytest.fixture
 def client() -> TestClient:
     settings = Settings(
+        source_provider="mock",
         database_url="sqlite+pysqlite:///:memory:",
         api_prefix="/api/v1",
         cors_origins=["http://localhost:1420"],

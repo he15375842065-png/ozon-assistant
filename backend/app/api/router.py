@@ -25,6 +25,7 @@ from app.schemas.drafts import (
 from app.schemas.logs import LogList
 from app.schemas.products import (
     CollectProductRequest,
+    OpenSourceBrowserRequest,
     ProductList,
     ProductRead,
     ProductUpdate,
@@ -35,6 +36,7 @@ from app.schemas.tasks import TaskList, TaskRead
 from app.services.dashboard import DashboardService
 from app.services.presenters import present_draft, present_log, present_product, present_task
 from app.services.tasks import TaskService
+from app.integrations.sources.provenance import source_data_kind
 
 
 router = APIRouter()
@@ -81,12 +83,30 @@ def collect_product(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_runtime_settings),
 ) -> WorkflowResponse:
-    product, task_id = build_workflow(session, settings).collect(str(request.url))
+    product, task_id = build_workflow(session, settings, collection_mode=request.mode).collect(str(request.url))
     return WorkflowResponse(
         product=present_product(product),
         task_id=task_id,
-        message="商品采集完成",
+        message="真实商品采集完成" if request.mode == "real" else "模拟样例采集完成（不是链接中的真实商品）",
+        collection_mode=request.mode,
     )
+
+
+@router.post("/sources/1688/browser/open", tags=["sources"])
+def open_source_browser(
+    request: OpenSourceBrowserRequest,
+    settings: Settings = Depends(get_runtime_settings),
+) -> dict[str, object]:
+    from app.integrations.sources.browser_1688 import get_browser_manager
+
+    return get_browser_manager(settings).open_browser(str(request.url) if request.url else None)
+
+
+@router.get("/sources/1688/browser/status", tags=["sources"])
+def source_browser_status(settings: Settings = Depends(get_runtime_settings)) -> dict[str, object]:
+    from app.integrations.sources.browser_1688 import get_browser_manager
+
+    return get_browser_manager(settings).status()
 
 
 @router.get("/products", response_model=ProductList, tags=["products"])
@@ -158,6 +178,7 @@ def process_product(
         task_id=task_id,
         draft_id=draft.id,
         message="AI 加工、定价和 Ozon 草稿生成完成",
+        collection_mode=source_data_kind(product.source_product.source, product.source_product.raw_payload),
     )
 
 
@@ -240,6 +261,8 @@ def list_logs(
 def _settings_read(settings: Settings) -> SettingsRead:
     return SettingsRead(
         source_provider=settings.source_provider,
+        source_browser_profile=settings.source_browser_profile,
+        source_browser_timeout_ms=settings.source_browser_timeout_ms,
         ai_provider=settings.ai_provider,
         ai_model=settings.ai_model,
         ai_temperature=settings.ai_temperature,
@@ -299,10 +322,14 @@ def update_settings(
 
 
 @router.get("/capabilities", response_model=dict[str, object], tags=["system"])
+@router.get("/features", response_model=dict[str, object], tags=["system"])
 def capabilities() -> dict[str, object]:
     return {
         "implemented": [
             "1688_mock_collection",
+            "1688_browser_collection",
+            "1688_browser_login",
+            "collection_data_provenance",
             "product_library",
             "mock_ai_processing",
             "ozon_mapping",
@@ -313,11 +340,15 @@ def capabilities() -> dict[str, object]:
             "logs",
         ],
         "planned": [
-            "real_1688_provider",
             "real_ai_providers",
             "real_ozon_connector",
             "inventory_sync",
             "order_management",
         ],
+        "limitations": {
+            "1688_browser_collection": "需用户在专用浏览器完成登录；验证码、访问限制或字段不完整会报错，不会使用模拟商品填充。",
+            "ai_processing": "当前仅模拟 AI；禁止用于真实商品。",
+            "ozon_publish": "当前仅模拟发布；没有真实 Ozon 发布能力。",
+        },
     }
 

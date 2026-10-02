@@ -7,6 +7,7 @@ import type {
   LogEntry,
   PublishResponse,
   Product,
+  SourceBrowserStatus,
   TaskItem,
   WorkflowResponse,
 } from "./types";
@@ -88,11 +89,16 @@ function responseErrorMessage(payload: unknown, status: number): string {
 
 export const api = {
   health: () => request<{ status?: string; service?: string }>("/health"),
+  sourceBrowserStatus: () => request<SourceBrowserStatus>("/sources/1688/browser/status"),
+  openSourceBrowser: (sourceUrl?: string) => request<SourceBrowserStatus>("/sources/1688/browser/open", {
+    method: "POST",
+    body: JSON.stringify(sourceUrl ? { url: sourceUrl } : {}),
+  }),
   dashboard: () => request<DashboardData>("/dashboard"),
-  collectProduct: (sourceUrl: string) =>
+  collectProduct: (sourceUrl: string, mode: "real" | "mock" = "real") =>
     request<WorkflowResponse>("/products/collect", {
       method: "POST",
-      body: JSON.stringify({ url: sourceUrl }),
+      body: JSON.stringify({ url: sourceUrl, mode }),
     }),
   products: (query?: { search?: string; ai_status?: string; ozon_status?: string; page?: number; page_size?: number }) =>
     request<ListResponse<Product>>("/products", undefined, query),

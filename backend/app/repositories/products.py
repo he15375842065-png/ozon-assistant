@@ -6,9 +6,10 @@ from decimal import Decimal
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.database.base import utc_now
 from app.integrations.sources.base import NormalizedProductData
+from app.integrations.sources.provenance import source_data_kind
 from app.models import AIResult, OzonDraft, Product, SourceProduct, Variant
 from app.schemas.products import ProductUpdate
 
@@ -85,6 +86,14 @@ class ProductRepository:
         return self.session.scalars(statement).all()
 
     def save_collected(self, data: NormalizedProductData) -> Product:
+        try:
+            return self._save_collected(data)
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def _save_collected(self, data: NormalizedProductData) -> Product:
+        self._separate_legacy_mock(data.source_product_id)
         source = self.session.scalar(
             select(SourceProduct).where(
                 SourceProduct.source == data.source,
@@ -127,7 +136,7 @@ class ProductRepository:
             if variant is None:
                 digest = hashlib.sha1(
                     (
-                        f"{data.source}:{data.source_product_id}:"
+                        f"v2:{data.source}:{data.source_product_id}:"
                         f"{item.source_sku_id}"
                     ).encode("utf-8"),
                     usedforsecurity=False,
@@ -145,6 +154,34 @@ class ProductRepository:
             variant.image = item.image
         self.session.commit()
         return self.get(product.id)
+
+    def _separate_legacy_mock(self, offer_id: str) -> None:
+        """Keep pre-provenance fixtures intact when a real offer is collected."""
+
+        legacy_source = self.session.scalar(
+            select(SourceProduct).where(
+                SourceProduct.source == "1688",
+                SourceProduct.source_product_id == offer_id,
+            )
+        )
+        if legacy_source is None or source_data_kind("1688", legacy_source.raw_payload) != "mock":
+            return
+        collision = self.session.scalar(
+            select(SourceProduct).where(
+                SourceProduct.source == "mock_1688",
+                SourceProduct.source_product_id == offer_id,
+            )
+        )
+        if collision is not None:
+            raise ConflictError("存在重复的历史模拟商品，采集未保存。请先在商品库处理重复的模拟样例。")
+        legacy_source.source = "mock_1688"
+        legacy_source.raw_payload = {
+            **legacy_source.raw_payload,
+            "provider": "mock_1688",
+            "mock": True,
+            "source": "mock_1688",
+        }
+        self.session.flush()
 
     @staticmethod
     def _apply_normalized(product: Product, data: NormalizedProductData) -> None:

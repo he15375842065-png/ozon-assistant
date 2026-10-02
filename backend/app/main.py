@@ -26,8 +26,14 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         runtime_database.migrate()
-        yield
-        runtime_database.dispose()
+        try:
+            yield
+        finally:
+            from app.integrations.sources.browser_1688 import close_browser_managers
+            try:
+                close_browser_managers()
+            finally:
+                runtime_database.dispose()
 
     application = FastAPI(
         title=runtime_settings.app_name,

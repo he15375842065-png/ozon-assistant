@@ -18,7 +18,9 @@ def test_mock_1688_adapter_is_deterministic_and_normalized() -> None:
     second = adapter.collect(url)
 
     assert first == second
-    assert first.source == "1688"
+    assert first.source == "mock_1688"
+    assert first.raw_payload["mock"] is True
+    assert first.raw_payload["provider"] == "mock_1688"
     assert first.source_product_id == "123456789"
     assert len(first.variants) == 2
     assert first.stock == sum(item.stock for item in first.variants)

@@ -1,4 +1,5 @@
 from app.models import AIResult, AppLog, OzonDraft, Product, Task
+from app.integrations.sources.provenance import source_data_kind, source_data_provider
 from app.schemas.drafts import DraftRead
 from app.schemas.logs import LogRead
 from app.schemas.products import AIResultRead, ProductRead, VariantRead
@@ -12,6 +13,8 @@ def present_product(product: Product) -> ProductRead:
         id=product.id,
         source_product_id=product.source_product.source_product_id,
         source=product.source_product.source,
+        data_kind=source_data_kind(product.source_product.source, product.source_product.raw_payload),
+        data_provider=source_data_provider(product.source_product.source, product.source_product.raw_payload),
         source_url=product.source_product.source_url,
         title_original=product.title_original,
         description_original=product.description_original,
